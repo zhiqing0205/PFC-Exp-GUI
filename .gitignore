@@ -1,0 +1,13 @@
+build/
+build*/
+dist/
+runs/
+_CPack_Packages/
+
+*.deb
+*.dmg
+*.zip
+
+checkpoint_timestamps.txt
+run_config.txt
+gui_process.log

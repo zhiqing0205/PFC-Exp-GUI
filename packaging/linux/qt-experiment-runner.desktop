@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Qt Experiment Runner
+Comment=Configure and batch-run misfit_sim experiments
+Exec=qt_gui_client
+Terminal=false
+Categories=Science;Education;
+
