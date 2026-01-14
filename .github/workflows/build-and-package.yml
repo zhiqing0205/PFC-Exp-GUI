@@ -44,10 +44,18 @@ jobs:
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
+        id: qt
         with:
           version: 6.4.2
           arch: win64_msvc2019_64
           cache: true
+
+      - name: Configure Qt env
+        shell: pwsh
+        run: |
+          Add-Content $env:GITHUB_ENV "QT_ROOT_DIR=${{ steps.qt.outputs.qtPath }}"
+          Add-Content $env:GITHUB_ENV "CMAKE_PREFIX_PATH=${{ steps.qt.outputs.qtPath }}"
+          Add-Content $env:GITHUB_PATH "${{ steps.qt.outputs.qtPath }}\\bin"
 
       - name: Package (portable .zip)
         shell: pwsh
@@ -72,10 +80,17 @@ jobs:
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
+        id: qt
         with:
           version: 6.4.2
           arch: clang_64
           cache: true
+
+      - name: Configure Qt env
+        run: |
+          echo "QT_ROOT_DIR=${{ steps.qt.outputs.qtPath }}" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=${{ steps.qt.outputs.qtPath }}" >> "$GITHUB_ENV"
+          echo "${{ steps.qt.outputs.qtPath }}/bin" >> "$GITHUB_PATH"
 
       - name: Package (.dmg)
         run: bash scripts/package_macos.sh

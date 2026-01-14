@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+set -x
+
 gen_args=()
 if command -v ninja >/dev/null 2>&1; then
   gen_args=(-G Ninja)
@@ -19,30 +21,31 @@ if [[ -z "${APP:-}" || ! -d "$APP" ]]; then
   exit 1
 fi
 
-if ! command -v macdeployqt >/dev/null 2>&1; then
-  echo "macdeployqt not found in PATH. Ensure Qt is installed and <Qt>/bin is in PATH." >&2
-  exit 1
+macdeployqt_bin="$(command -v macdeployqt || true)"
+if [[ -z "${macdeployqt_bin:-}" ]]; then
+  for base in "${QT_ROOT_DIR:-}" "${QTDIR:-}" "${Qt6_Dir:-}" "${Qt6_DIR:-}" "${Qt_DIR:-}"; do
+    if [[ -n "${base:-}" && -x "$base/bin/macdeployqt" ]]; then
+      macdeployqt_bin="$base/bin/macdeployqt"
+      break
+    fi
+  done
 fi
-
-DMG_NAME="$(basename "$APP" .app).dmg"
-rm -f "./$DMG_NAME"
-
-macdeployqt "$APP" -qmldir=src/gui/qml -dmg
-
-DMG=""
-if [[ -f "./$DMG_NAME" ]]; then
-  DMG="./$DMG_NAME"
-else
-  APP_DIR="$(dirname "$APP")"
-  DMG="$(ls -t "./"*.dmg "$APP_DIR"/*.dmg 2>/dev/null | head -n 1 || true)"
-fi
-if [[ -z "${DMG:-}" || ! -f "$DMG" ]]; then
-  echo "macdeployqt succeeded but no .dmg was found (expected: ./$DMG_NAME)" >&2
+if [[ -z "${macdeployqt_bin:-}" ]]; then
+  echo "macdeployqt not found. PATH=$PATH" >&2
+  echo "Hint: ensure Qt bin dir is in PATH, or set QT_ROOT_DIR to your Qt install." >&2
   exit 1
 fi
 
 mkdir -p dist
 rm -f dist/*.dmg
-cp -f "$DMG" "dist/qt-experiment-runner_macos.dmg"
+
+"$macdeployqt_bin" "$APP" -qmldir=src/gui/qml
+
+if ! command -v hdiutil >/dev/null 2>&1; then
+  echo "hdiutil not found; cannot create .dmg on this environment." >&2
+  exit 1
+fi
+
+hdiutil create -volname "Qt Experiment Runner" -srcfolder "$APP" -ov -format UDZO "dist/qt-experiment-runner_macos.dmg"
 
 echo "Done: dist/qt-experiment-runner_macos.dmg"
