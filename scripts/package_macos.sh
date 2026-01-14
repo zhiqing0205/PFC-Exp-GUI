@@ -46,6 +46,11 @@ if ! command -v hdiutil >/dev/null 2>&1; then
   exit 1
 fi
 
-hdiutil create -volname "Qt Experiment Runner" -srcfolder "$APP" -ov -format UDZO "dist/qt-experiment-runner_macos.dmg"
+STAGE_DIR="build/dmg_stage"
+rm -rf "$STAGE_DIR"
+mkdir -p "$STAGE_DIR"
+cp -R "$APP" "$STAGE_DIR/"
+
+hdiutil create -volname "Qt Experiment Runner" -srcfolder "$STAGE_DIR" -ov -format UDZO "dist/qt-experiment-runner_macos.dmg"
 
 echo "Done: dist/qt-experiment-runner_macos.dmg"
