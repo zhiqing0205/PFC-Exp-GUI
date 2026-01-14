@@ -37,13 +37,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Python (for aqt)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: 6.4.2
           arch: win64_msvc2019_64
           cache: true
-          modules: qtquickcontrols2
 
       - name: Package (portable .zip)
         shell: pwsh
@@ -60,6 +64,11 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup Python (for aqt)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4

@@ -24,12 +24,20 @@ if ! command -v macdeployqt >/dev/null 2>&1; then
   exit 1
 fi
 
+DMG_NAME="$(basename "$APP" .app).dmg"
+rm -f "./$DMG_NAME"
+
 macdeployqt "$APP" -qmldir=src/gui/qml -dmg
 
-APP_DIR="$(dirname "$APP")"
-DMG="$(ls -t "$APP_DIR"/*.dmg 2>/dev/null | head -n 1 || true)"
+DMG=""
+if [[ -f "./$DMG_NAME" ]]; then
+  DMG="./$DMG_NAME"
+else
+  APP_DIR="$(dirname "$APP")"
+  DMG="$(ls -t "./"*.dmg "$APP_DIR"/*.dmg 2>/dev/null | head -n 1 || true)"
+fi
 if [[ -z "${DMG:-}" || ! -f "$DMG" ]]; then
-  echo "macdeployqt succeeded but no .dmg was found under $APP_DIR" >&2
+  echo "macdeployqt succeeded but no .dmg was found (expected: ./$DMG_NAME)" >&2
   exit 1
 fi
 
