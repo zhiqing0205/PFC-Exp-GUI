@@ -70,7 +70,11 @@ if(BUILD_GUI)
     set_target_properties(qt_gui_client PROPERTIES MACOSX_BUNDLE TRUE)
   endif()
 
-  install(TARGETS qt_gui_client RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+  install(
+    TARGETS qt_gui_client
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    BUNDLE DESTINATION "."
+  )
   if(UNIX AND NOT APPLE)
     install(FILES packaging/linux/qt-experiment-runner.desktop DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
   endif()

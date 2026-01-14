@@ -53,9 +53,21 @@ jobs:
       - name: Configure Qt env
         shell: pwsh
         run: |
-          Add-Content $env:GITHUB_ENV "QT_ROOT_DIR=${{ steps.qt.outputs.qtPath }}"
-          Add-Content $env:GITHUB_ENV "CMAKE_PREFIX_PATH=${{ steps.qt.outputs.qtPath }}"
-          Add-Content $env:GITHUB_PATH "${{ steps.qt.outputs.qtPath }}\\bin"
+          $qtRoot = ""
+          if ($env:QT_PLUGIN_PATH) {
+            $qtRoot = Split-Path $env:QT_PLUGIN_PATH -Parent
+          } elseif ($env:QML2_IMPORT_PATH) {
+            $qtRoot = Split-Path $env:QML2_IMPORT_PATH -Parent
+          } elseif ("${{ steps.qt.outputs.qtPath }}") {
+            $qtRoot = "${{ steps.qt.outputs.qtPath }}"
+          }
+          if ($qtRoot) {
+            Add-Content $env:GITHUB_ENV "QT_ROOT_DIR=$qtRoot"
+            Add-Content $env:GITHUB_ENV "CMAKE_PREFIX_PATH=$qtRoot"
+            Add-Content $env:GITHUB_PATH "$qtRoot\\bin"
+          } else {
+            Write-Host "Warning: Unable to determine Qt root; relying on PATH from install-qt-action."
+          }
 
       - name: Package (portable .zip)
         shell: pwsh
@@ -88,9 +100,23 @@ jobs:
 
       - name: Configure Qt env
         run: |
-          echo "QT_ROOT_DIR=${{ steps.qt.outputs.qtPath }}" >> "$GITHUB_ENV"
-          echo "CMAKE_PREFIX_PATH=${{ steps.qt.outputs.qtPath }}" >> "$GITHUB_ENV"
-          echo "${{ steps.qt.outputs.qtPath }}/bin" >> "$GITHUB_PATH"
+          set -euo pipefail
+          qt_root=""
+          if [[ -n "${QT_PLUGIN_PATH:-}" ]]; then
+            qt_root="$(dirname "${QT_PLUGIN_PATH}")"
+          elif [[ -n "${QML2_IMPORT_PATH:-}" ]]; then
+            qt_root="$(dirname "${QML2_IMPORT_PATH}")"
+          elif [[ -n "${{ steps.qt.outputs.qtPath }}" ]]; then
+            qt_root="${{ steps.qt.outputs.qtPath }}"
+          fi
+
+          if [[ -n "${qt_root:-}" ]]; then
+            echo "QT_ROOT_DIR=$qt_root" >> "$GITHUB_ENV"
+            echo "CMAKE_PREFIX_PATH=$qt_root" >> "$GITHUB_ENV"
+            echo "$qt_root/bin" >> "$GITHUB_PATH"
+          else
+            echo "Warning: Unable to determine Qt root; relying on PATH from install-qt-action." >&2
+          fi
 
       - name: Package (.dmg)
         run: bash scripts/package_macos.sh
