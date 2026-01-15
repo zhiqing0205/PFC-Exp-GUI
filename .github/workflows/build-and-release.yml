@@ -139,8 +139,35 @@ jobs:
 
           windeployqt --release --compiler-runtime "dist/PFC-Exp-GUI.exe"
 
-          # Bundle FFTW runtime from vcpkg (manifest mode installs to ./vcpkg_installed)
-          Copy-Item "vcpkg_installed/x64-windows/bin/*fftw*.dll" "dist/" -Force -ErrorAction SilentlyContinue
+          # Bundle vcpkg runtime DLLs (needed e.g. for FFTW3).
+          $triplet = "x64-windows"
+          $candidateBins = @()
+          $candidateBins += (Join-Path $env:GITHUB_WORKSPACE "vcpkg_installed\\$triplet\\bin")
+          $candidateBins += (Join-Path $env:GITHUB_WORKSPACE "build\\vcpkg_installed\\$triplet\\bin")
+          $candidateBins += (Join-Path $env:GITHUB_WORKSPACE "vcpkg\\installed\\$triplet\\bin")
+          if ($env:VCPKG_INSTALLED_DIR) { $candidateBins += (Join-Path $env:VCPKG_INSTALLED_DIR "$triplet\\bin") }
+          if ($env:VCPKG_ROOT) { $candidateBins += (Join-Path $env:VCPKG_ROOT "installed\\$triplet\\bin") }
+          if ($env:VCPKG_INSTALLATION_ROOT) { $candidateBins += (Join-Path $env:VCPKG_INSTALLATION_ROOT "installed\\$triplet\\bin") }
+
+          $copiedAny = $false
+          foreach ($bin in $candidateBins) {
+            if (Test-Path $bin) {
+              Write-Host "Copying vcpkg runtime DLLs from: $bin"
+              Copy-Item (Join-Path $bin "*.dll") "dist/" -Force
+              $copiedAny = $true
+            }
+          }
+          if (-not $copiedAny) {
+            Write-Warning "No vcpkg runtime bin directory found; pfc-exp-cli.exe may fail to start if it depends on DLLs."
+          }
+
+          $fftw = Get-ChildItem "dist" -Filter "*fftw*.dll" -ErrorAction SilentlyContinue
+          if (-not $fftw) {
+            Write-Warning "No FFTW DLL copied to dist. If pfc-exp-cli.exe fails with 0xC0000135, check vcpkg bin path."
+          } else {
+            Write-Host "FFTW DLLs in dist:"
+            $fftw | ForEach-Object { Write-Host "  - $($_.Name)" }
+          }
 
           $out = "PFC-Exp-GUI-$version-${{ matrix.artifact_suffix }}.zip"
           Compress-Archive -Path "dist/*" -DestinationPath $out -Force

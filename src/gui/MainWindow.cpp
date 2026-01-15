@@ -577,6 +577,15 @@ void MainWindow::launchJob(const RunJob& job) {
                                   "\n\nMake sure `pfc-exp-cli` is packaged alongside the GUI.");
         return;
     }
+#ifdef Q_OS_WIN
+    {
+        const QDir exeDir(QFileInfo(program).absolutePath());
+        const QStringList fftwDlls = exeDir.entryList(QStringList() << "*fftw*.dll", QDir::Files);
+        if (fftwDlls.isEmpty()) {
+            appendLog("=== Warning: no *fftw*.dll found next to pfc-exp-cli; Windows may fail to start (0xC0000135) ===");
+        }
+    }
+#endif
 
     if (process_) {
         process_->deleteLater();
@@ -586,6 +595,7 @@ void MainWindow::launchJob(const RunJob& job) {
     process_ = new QProcess(this);
     process_->setProgram(program);
     process_->setArguments(buildArgs(job.params, job.outDir));
+    process_->setWorkingDirectory(job.outDir);
     process_->setProcessChannelMode(QProcess::MergedChannels);
 
     connect(process_, &QProcess::readyRead, this, &MainWindow::onProcessReadyRead);
@@ -707,7 +717,15 @@ void MainWindow::onProcessReadyRead() {
 
 void MainWindow::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus) {
     const bool ok = (exitStatus == QProcess::NormalExit && exitCode == 0);
-    appendLog(QString("=== Finished: exitCode=%1 (%2) ===").arg(exitCode).arg(ok ? "OK" : "FAILED"));
+    const QString statusStr = (exitStatus == QProcess::NormalExit) ? "NormalExit" : "CrashExit";
+    const quint32 code = static_cast<quint32>(exitCode);
+    const QString hexCode = QString("0x%1").arg(code, 8, 16, QChar('0')).toUpper();
+    appendLog(QString("=== Finished: exitStatus=%1 exitCode=%2 (%3, %4) ===").arg(statusStr).arg(exitCode).arg(hexCode).arg(ok ? "OK" : "FAILED"));
+#ifdef Q_OS_WIN
+    if (!ok && exitStatus == QProcess::CrashExit && code == 0xC0000135u) {
+        appendLog("=== Hint: 0xC0000135 usually means a required DLL was not found. Ensure FFTW DLLs are bundled next to pfc-exp-cli.exe ===");
+    }
+#endif
 
     process_->deleteLater();
     process_ = nullptr;
@@ -742,5 +760,23 @@ void MainWindow::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus
 }
 
 void MainWindow::onProcessError(QProcess::ProcessError error) {
-    appendLog(QString("=== Process error: %1 ===").arg(static_cast<int>(error)));
+    if (!process_) {
+        appendLog(QString("=== Process error: %1 (process=null) ===").arg(static_cast<int>(error)));
+        return;
+    }
+
+    QString errorName;
+    switch (error) {
+        case QProcess::FailedToStart: errorName = "FailedToStart"; break;
+        case QProcess::Crashed: errorName = "Crashed"; break;
+        case QProcess::Timedout: errorName = "Timedout"; break;
+        case QProcess::WriteError: errorName = "WriteError"; break;
+        case QProcess::ReadError: errorName = "ReadError"; break;
+        case QProcess::UnknownError: errorName = "UnknownError"; break;
+    }
+
+    appendLog(QString("=== Process error: %1 (%2) ===").arg(static_cast<int>(error)).arg(errorName));
+    appendLog("=== errorString: " + process_->errorString() + " ===");
+    appendLog("=== program: " + process_->program() + " ===");
+    appendLog("=== workingDir: " + process_->workingDirectory() + " ===");
 }
