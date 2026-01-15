@@ -111,12 +111,15 @@ cmake --build build
 
 仓库内已提供工作流：`.github/workflows/build-and-package.yml`，触发条件：
 - `push` 到 `main/master`：自动构建并生成 artifacts（在 Actions 页面下载）
-- `push` tag `v*`（例如 `v0.1.0`）：自动创建 GitHub Release，并把安装包作为 Release assets 上传
+- `push` 到 `main/master`：同时会自动更新一个 `nightly` 的预发布 Release（方便直接在 Releases 下载）
+- `push` tag `v*`（例如 `v0.1.1`）：自动创建对应版本的 GitHub Release，并把安装包作为 Release assets 上传
 
 产物（默认策略）：
 - Linux：生成 `.deb`（包含 `qt_gui_client` + `misfit_sim`）
 - Windows：生成可直接解压运行的 `.zip`（GUI 客户端；实验程序建议在 WSL/远端/同机 Linux 构建后在 GUI 里选择）
 - macOS：生成 `.dmg`（GUI 客户端）
+
+Release 页面会给每个安装包 asset 设置 label：`sha256:<hash>`，并额外上传 `SHA256SUMS.txt`。
 
 你需要做的步骤：
 1) 把当前目录初始化为 git 仓库并推到 GitHub（如果还没做）
@@ -124,6 +127,6 @@ cmake --build build
 3) 正常 `git push`：到 GitHub → Actions → 选择本工作流 → 下载 artifacts
 4) 想要自动生成 Release：打 tag 并 push
    ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
+   git tag v0.1.1
+   git push origin v0.1.1
    ```

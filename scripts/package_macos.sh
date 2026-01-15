@@ -8,7 +8,12 @@ if command -v ninja >/dev/null 2>&1; then
   gen_args=(-G Ninja)
 fi
 
-cmake -S . -B build "${gen_args[@]}" -DCMAKE_BUILD_TYPE=Release -DBUILD_SIM=OFF
+cmake_args=(-DCMAKE_BUILD_TYPE=Release -DBUILD_SIM=OFF)
+if [[ -n "${QT_EXPERIMENT_RUNNER_VERSION:-}" ]]; then
+  cmake_args+=(-DQT_EXPERIMENT_RUNNER_VERSION="${QT_EXPERIMENT_RUNNER_VERSION}")
+fi
+
+cmake -S . -B build "${gen_args[@]}" "${cmake_args[@]}"
 cmake --build build
 
 APP="build/bin/qt_gui_client.app"
@@ -51,6 +56,8 @@ rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR"
 cp -R "$APP" "$STAGE_DIR/"
 
-hdiutil create -volname "Qt Experiment Runner" -srcfolder "$STAGE_DIR" -ov -format UDZO "dist/qt-experiment-runner_macos.dmg"
+arch="$(uname -m)"
+out="dist/qt-experiment-runner_macos_${arch}.dmg"
+hdiutil create -volname "Qt Experiment Runner" -srcfolder "$STAGE_DIR" -ov -format UDZO "$out"
 
-echo "Done: dist/qt-experiment-runner_macos.dmg"
+echo "Done: $out"

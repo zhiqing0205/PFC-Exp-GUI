@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(QtExperimentRunner VERSION 0.1.0 LANGUAGES CXX)
+set(QT_EXPERIMENT_RUNNER_VERSION "0.1.1" CACHE STRING "Project version for packaging/builds")
+project(QtExperimentRunner VERSION ${QT_EXPERIMENT_RUNNER_VERSION} LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

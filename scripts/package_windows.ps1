@@ -6,7 +6,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-cmake -S . -B $BuildDir -DBUILD_SIM=OFF
+$cmakeArgs = @("-DBUILD_SIM=OFF")
+if ($env:QT_EXPERIMENT_RUNNER_VERSION) {
+  $cmakeArgs += "-DQT_EXPERIMENT_RUNNER_VERSION=$($env:QT_EXPERIMENT_RUNNER_VERSION)"
+}
+
+cmake -S . -B $BuildDir @cmakeArgs
 cmake --build $BuildDir --config $Config
 
 $exe = Get-ChildItem -Path $BuildDir -Recurse -Filter "qt_gui_client.exe" | Select-Object -First 1
@@ -26,9 +31,13 @@ if (-not $windeployqt) {
 & $windeployqt.Path (Join-Path $stage "qt_gui_client.exe") --qmldir (Join-Path $PSScriptRoot "..\src\gui\qml") --compiler-runtime
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
-$zip = Join-Path $OutDir "qt-experiment-runner_windows.zip"
+$arch = $env:PROCESSOR_ARCHITECTURE
+if ($arch -eq "AMD64") { $arch = "x64" }
+elseif ($arch -eq "ARM64") { $arch = "arm64" }
+else { $arch = $arch.ToLowerInvariant() }
+
+$zip = Join-Path $OutDir "qt-experiment-runner_windows_$arch.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip
 
 Write-Host "Done: $zip"
-

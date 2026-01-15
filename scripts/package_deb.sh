@@ -6,7 +6,12 @@ if command -v ninja >/dev/null 2>&1; then
   gen_args=(-G Ninja)
 fi
 
-cmake -S . -B build "${gen_args[@]}" -DCMAKE_BUILD_TYPE=Release
+cmake_args=(-DCMAKE_BUILD_TYPE=Release)
+if [[ -n "${QT_EXPERIMENT_RUNNER_VERSION:-}" ]]; then
+  cmake_args+=(-DQT_EXPERIMENT_RUNNER_VERSION="${QT_EXPERIMENT_RUNNER_VERSION}")
+fi
+
+cmake -S . -B build "${gen_args[@]}" "${cmake_args[@]}"
 cmake --build build
 
 rm -rf build/stage
