@@ -28,6 +28,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Detect project dir
+        id: proj
+        shell: bash
+        run: |
+          if [[ -f CMakeLists.txt ]]; then
+            echo "src_dir=." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          src_file="$(find . -maxdepth 4 -name CMakeLists.txt -print -quit)"
+          if [[ -z "${src_file}" ]]; then
+            echo "CMakeLists.txt not found in repository." >&2
+            exit 1
+          fi
+          src_dir="$(dirname "${src_file}")"
+          echo "Detected src_dir: ${src_dir}"
+          echo "src_dir=${src_dir}" >> "$GITHUB_OUTPUT"
+
       - name: Install Qt
         id: qt
         uses: jurplel/install-qt-action@v4
@@ -64,7 +81,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          cmake -S . -B build -G Ninja \
+          cmake -S "${{ steps.proj.outputs.src_dir }}" -B build -G Ninja \
             -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
             -DCMAKE_PREFIX_PATH="${{ steps.qt.outputs.qt-path }}" \
             -DCMAKE_TOOLCHAIN_FILE="${{ steps.vcpkg.outputs.vcpkgRoot }}/scripts/buildsystems/vcpkg.cmake" \
@@ -74,7 +91,7 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          cmake -S . -B build -G Ninja \
+          cmake -S "${{ steps.proj.outputs.src_dir }}" -B build -G Ninja \
             -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
             -DCMAKE_PREFIX_PATH="${{ steps.qt.outputs.qt-path }}"
 
