@@ -24,4 +24,5 @@
 *.cfg
 *.dat
 *.txt
+!CMakeLists.txt
 params.json
