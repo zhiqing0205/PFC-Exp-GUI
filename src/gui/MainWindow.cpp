@@ -21,10 +21,12 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QStandardPaths>
+#include <QStyle>
 #include <QTabWidget>
 #include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QFontDatabase>
 
 static QDoubleSpinBox* makeDoubleSpin(double min, double max, double value, int decimals, double step) {
     auto* box = new QDoubleSpinBox;
@@ -58,14 +60,26 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     log_ = new QPlainTextEdit;
     log_->setReadOnly(true);
     log_->setMaximumBlockCount(5000);
+    {
+        QFont f = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        if (f.pointSizeF() > 0) {
+            f.setPointSizeF(std::max(9.0, f.pointSizeF()));
+        } else {
+            f.setPointSize(10);
+        }
+        log_->setFont(f);
+    }
 
     auto* logBox = new QGroupBox("Log");
     auto* logLayout = new QVBoxLayout;
     logLayout->addWidget(log_);
+    logLayout->setContentsMargins(0, 0, 0, 0);
     logBox->setLayout(logLayout);
 
     auto* central = new QWidget;
     auto* centralLayout = new QVBoxLayout;
+    centralLayout->setContentsMargins(14, 14, 14, 14);
+    centralLayout->setSpacing(12);
     centralLayout->addWidget(tabs);
     centralLayout->addWidget(logBox, 1);
     central->setLayout(centralLayout);
@@ -73,10 +87,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     // ---------- Single tab ----------
     auto* singleLayout = new QVBoxLayout;
+    singleLayout->setSpacing(12);
     singleTab->setLayout(singleLayout);
 
     auto* singleParamsBox = new QGroupBox("Parameters");
     auto* singleParamsForm = new QFormLayout;
+    singleParamsForm->setVerticalSpacing(8);
+    singleParamsForm->setHorizontalSpacing(12);
 
     singleU0_ = makeDoubleSpin(-2.0, 2.0, 0.05, 6, 0.01);
     singleCon0_ = makeDoubleSpin(0.0, 1.0, 0.2, 6, 0.01);
@@ -113,6 +130,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     auto* singleBrowse = new QToolButton;
     singleBrowse->setText("Browse…");
+    singleBrowse->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    singleBrowse->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
     connect(singleBrowse, &QToolButton::clicked, this, &MainWindow::browseSingleOutDir);
 
     auto* baseOutRow = new QWidget;
@@ -132,6 +151,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* singleRun = new QPushButton("Run");
     auto* singleStop = new QPushButton("Stop");
     auto* openOut = new QPushButton("Open Output");
+    singleRun->setProperty("primary", true);
+    singleStop->setProperty("danger", true);
+    singleRun->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
+    singleStop->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
+    openOut->setIcon(style()->standardIcon(QStyle::SP_DirOpenIcon));
     connect(singleRun, &QPushButton::clicked, this, &MainWindow::startSingleRun);
     connect(singleStop, &QPushButton::clicked, this, &MainWindow::stopRun);
     connect(openOut, &QPushButton::clicked, this, &MainWindow::openCurrentOutputDir);
@@ -148,10 +172,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     // ---------- Batch tab ----------
     auto* batchLayout = new QVBoxLayout;
+    batchLayout->setSpacing(12);
     batchTab->setLayout(batchLayout);
 
     auto* batchFixedBox = new QGroupBox("Fixed Parameters");
     auto* batchFixedForm = new QFormLayout;
+    batchFixedForm->setVerticalSpacing(8);
+    batchFixedForm->setHorizontalSpacing(12);
     batchSig_ = makeDoubleSpin(0.0, 2.0, 0.05, 6, 0.01);
     batchDt_ = makeDoubleSpin(1e-6, 1.0, 0.05, 6, 0.01);
     batchDx_ = makeDoubleSpin(1e-6, 10.0, 0.125, 6, 0.01);
@@ -175,6 +202,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     auto* batchSweepBox = new QGroupBox("Sweep Parameters (Cartesian product)");
     auto* sweepForm = new QFormLayout;
+    sweepForm->setVerticalSpacing(8);
+    sweepForm->setHorizontalSpacing(12);
 
     auto* u0Row = new QWidget;
     auto* u0RowLayout = new QHBoxLayout;
@@ -248,6 +277,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     batchName_->setPlaceholderText("Optional (default: timestamp)");
     auto* batchBrowse = new QToolButton;
     batchBrowse->setText("Browse…");
+    batchBrowse->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    batchBrowse->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
     connect(batchBrowse, &QToolButton::clicked, this, &MainWindow::browseBatchOutDir);
 
     auto* batchBaseRow = new QWidget;
@@ -262,6 +293,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     batchOutBox->setLayout(batchOutForm);
 
     batchPreview_ = new QLabel;
+    batchPreview_->setProperty("hint", true);
+    batchPreview_->setWordWrap(true);
     batchProgress_ = new QProgressBar;
     batchProgress_->setRange(0, 100);
     batchProgress_->setValue(0);
@@ -272,6 +305,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* batchRun = new QPushButton("Run Batch");
     auto* batchStop = new QPushButton("Stop");
     auto* openOut2 = new QPushButton("Open Output");
+    batchRun->setProperty("primary", true);
+    batchStop->setProperty("danger", true);
+    batchRun->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
+    batchStop->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
+    openOut2->setIcon(style()->standardIcon(QStyle::SP_DirOpenIcon));
     connect(batchRun, &QPushButton::clicked, this, &MainWindow::startBatchRun);
     connect(batchStop, &QPushButton::clicked, this, &MainWindow::stopRun);
     connect(openOut2, &QPushButton::clicked, this, &MainWindow::openCurrentOutputDir);

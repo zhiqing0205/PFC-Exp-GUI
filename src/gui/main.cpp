@@ -40,6 +40,130 @@ static QIcon makeAppIcon() {
     return icon;
 }
 
+static QString appStyleSheet() {
+    return QString::fromUtf8(R"QSS(
+QWidget {
+  color: #EAEAEA;
+  font-size: 11pt;
+}
+
+QMainWindow {
+  background: #121212;
+}
+
+QTabWidget::pane {
+  border: 0;
+}
+
+QTabBar::tab {
+  background: #1A1A1A;
+  border: 1px solid #2A2A2A;
+  border-bottom: 0;
+  padding: 8px 14px;
+  margin-right: 6px;
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+}
+QTabBar::tab:selected {
+  background: #202020;
+  border-color: #3A3A3A;
+}
+QTabBar::tab:hover {
+  background: #242424;
+}
+
+QGroupBox {
+  border: 1px solid #2A2A2A;
+  border-radius: 14px;
+  margin-top: 18px;
+  padding: 12px;
+  background: #161616;
+}
+QGroupBox::title {
+  subcontrol-origin: margin;
+  left: 14px;
+  padding: 0 8px;
+  color: #B7C6FF;
+  font-weight: 600;
+}
+
+QLabel[hint="true"] {
+  background: #161616;
+  border: 1px solid #2A2A2A;
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: #CFCFCF;
+}
+
+QLineEdit, QSpinBox, QDoubleSpinBox {
+  background: #101010;
+  border: 1px solid #2E2E2E;
+  border-radius: 10px;
+  padding: 6px 8px;
+  selection-background-color: #4080FF;
+}
+QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+  border: 1px solid #4080FF;
+}
+
+QPlainTextEdit {
+  background: #0E0E0E;
+  border: 1px solid #2A2A2A;
+  border-radius: 14px;
+  padding: 10px;
+  selection-background-color: #4080FF;
+}
+
+QToolButton, QPushButton {
+  background: #232323;
+  border: 1px solid #323232;
+  border-radius: 10px;
+  padding: 8px 14px;
+}
+QToolButton:hover, QPushButton:hover {
+  background: #2A2A2A;
+  border-color: #3A3A3A;
+}
+QToolButton:pressed, QPushButton:pressed {
+  background: #1B1B1B;
+}
+
+QPushButton[primary="true"] {
+  background: #4080FF;
+  border-color: #4080FF;
+  color: #0B0B0B;
+  font-weight: 700;
+}
+QPushButton[primary="true"]:hover {
+  background: #5B93FF;
+  border-color: #5B93FF;
+}
+QPushButton[danger="true"] {
+  background: #E05252;
+  border-color: #E05252;
+  color: #0B0B0B;
+  font-weight: 700;
+}
+QPushButton[danger="true"]:hover {
+  background: #F06A6A;
+  border-color: #F06A6A;
+}
+
+QProgressBar {
+  background: #101010;
+  border: 1px solid #2E2E2E;
+  border-radius: 10px;
+  padding: 2px;
+  text-align: center;
+}
+QProgressBar::chunk {
+  border-radius: 8px;
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+    stop:0 #4080FF, stop:1 #7A5CFF);
+}
+)QSS");
+}
+
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     app.setApplicationName("PFC-Exp-GUI");
@@ -64,6 +188,8 @@ int main(int argc, char** argv) {
     palette.setColor(QPalette::Highlight, QColor(64, 128, 255));
     palette.setColor(QPalette::HighlightedText, Qt::black);
     app.setPalette(palette);
+
+    app.setStyleSheet(appStyleSheet());
 
     MainWindow w;
     w.show();
