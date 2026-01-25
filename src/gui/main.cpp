@@ -53,6 +53,12 @@ QMainWindow {
 
 QTabWidget::pane {
   border: 0;
+  margin-top: -1px;
+}
+
+QTabBar::base {
+  border: 0;
+  background: transparent;
 }
 
 QTabBar::tab {

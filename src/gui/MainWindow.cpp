@@ -26,6 +26,7 @@
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QStyle>
+#include <QTabBar>
 #include <QTabWidget>
 #include <QToolButton>
 #include <QUrl>
@@ -57,6 +58,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     auto* tabs = new QTabWidget;
     tabs->setDocumentMode(true);
+    tabs->setUsesScrollButtons(true);
+    tabs->tabBar()->setDrawBase(false);
+    tabs->tabBar()->setExpanding(false);
 
     auto* singleTab = new QWidget;
     auto* batchTab = new QWidget;
@@ -98,7 +102,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     centralLayout->setContentsMargins(14, 14, 14, 14);
     centralLayout->setSpacing(12);
     auto* splitter = new QSplitter(Qt::Vertical);
-    splitter->setHandleWidth(6);
+    splitter->setHandleWidth(10);
+    splitter->setChildrenCollapsible(false);
     splitter->addWidget(tabs);
     splitter->addWidget(logBox);
     splitter->setStretchFactor(0, 3);
