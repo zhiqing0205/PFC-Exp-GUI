@@ -99,6 +99,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* singleTab = new QWidget;
     auto* batchTab = new QWidget;
     auto* resultsTab = new QWidget;
+    auto* manufacturingTab = new QWidget;
+    auto* transformationTab = new QWidget;
+    auto* mechanicsTab = new QWidget;
 
     auto* singleScroll = new QScrollArea;
     singleScroll->setFrameShape(QFrame::NoFrame);
@@ -115,9 +118,27 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resultsScroll->setWidgetResizable(true);
     resultsScroll->setWidget(resultsTab);
 
+    auto* manufacturingScroll = new QScrollArea;
+    manufacturingScroll->setFrameShape(QFrame::NoFrame);
+    manufacturingScroll->setWidgetResizable(true);
+    manufacturingScroll->setWidget(manufacturingTab);
+
+    auto* transformationScroll = new QScrollArea;
+    transformationScroll->setFrameShape(QFrame::NoFrame);
+    transformationScroll->setWidgetResizable(true);
+    transformationScroll->setWidget(transformationTab);
+
+    auto* mechanicsScroll = new QScrollArea;
+    mechanicsScroll->setFrameShape(QFrame::NoFrame);
+    mechanicsScroll->setWidgetResizable(true);
+    mechanicsScroll->setWidget(mechanicsTab);
+
     tabs->addTab(singleScroll, "Single Run");
     tabs->addTab(batchScroll, "Batch Sweep");
     tabs->addTab(resultsScroll, "TXT Visualizer");
+    tabs->addTab(manufacturingScroll, "Manufacturing");
+    tabs->addTab(transformationScroll, "Transformation");
+    tabs->addTab(mechanicsScroll, "Stress–Strain");
 
     log_ = new QPlainTextEdit;
     log_->setReadOnly(true);
@@ -631,6 +652,68 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(resultsImagePointSize_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int) { renderResultsImage(); });
     connect(imageFit, &QToolButton::clicked, this, [this]() { fitResultsImage(); });
     connect(imageExport, &QToolButton::clicked, this, [this]() { exportResultsImage(); });
+
+    // ---------- Roadmap tabs (placeholders) ----------
+    auto setupRoadmapTab = [](QWidget* tab, const QString& title, const QString& desc, const QStringList& bullets) {
+        auto* layout = new QVBoxLayout;
+        layout->setSpacing(12);
+        tab->setLayout(layout);
+
+        auto* titleLabel = new QLabel(title);
+        QFont tf = titleLabel->font();
+        tf.setBold(true);
+        tf.setPointSize(std::max(11, tf.pointSize() + 2));
+        titleLabel->setFont(tf);
+        layout->addWidget(titleLabel);
+
+        auto* hint = new QLabel(desc);
+        hint->setProperty("hint", true);
+        hint->setWordWrap(true);
+        layout->addWidget(hint);
+
+        auto* box = new QGroupBox("Planned");
+        auto* boxLayout = new QVBoxLayout;
+        auto* list = new QLabel;
+        list->setTextFormat(Qt::RichText);
+        list->setWordWrap(true);
+        QString html = "<ul>";
+        for (const auto& item : bullets) html += "<li>" + item.toHtmlEscaped() + "</li>";
+        html += "</ul>";
+        list->setText(html);
+        boxLayout->addWidget(list);
+        box->setLayout(boxLayout);
+
+        layout->addWidget(box);
+        layout->addStretch(1);
+    };
+
+    setupRoadmapTab(
+        manufacturingTab,
+        "Manufacturing (Additive & Coating)",
+        "Planned presets and helpers for process-driven experiments. This page is a placeholder.",
+        QStringList()
+            << "Additive manufacturing presets (scan path / layer schedule)"
+            << "Coating / deposition parameter templates"
+            << "Import simple toolpath formats (CSV / G-code) for boundary conditions"
+            << "Run + compare multiple process recipes");
+
+    setupRoadmapTab(
+        transformationTab,
+        "Structural Transformation",
+        "Planned analysis for phase/structure evolution across checkpoints. This page is a placeholder.",
+        QStringList()
+            << "Track order-parameter statistics over time"
+            << "Compare checkpoint snapshots (Δ images / metrics)"
+            << "Optional peak-based orientation/defect analysis");
+
+    setupRoadmapTab(
+        mechanicsTab,
+        "Stress–Strain",
+        "Planned mechanical loading helpers. This page is a placeholder.",
+        QStringList()
+            << "Uniaxial / shear loading presets (small-scale demos)"
+            << "Stress–strain curve export (CSV + plots)"
+            << "Batch sweep on loading rate / amplitude");
 
     refreshResultsFileList();
 
