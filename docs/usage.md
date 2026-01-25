@@ -36,7 +36,15 @@ Batch Sweep 支持对 `u0 / con0 / steps` 设置区间与步长，并按笛卡�
 - `run_config.txt`：CLI 写入的运行参数
 - `phi_*.vti / con_*.vti / *.pvti` 等（实验程序输出）
 
-## 4. macOS 常见问题
+## 4. TXT 可视化（TXT Visualizer）
+
+GUI 提供 `TXT Visualizer` 标签页，用于快速查看输出目录中的 `*.txt`（例如 `energy.txt`、`phimax.txt`、`checkpoint_timestamps.txt`）：
+
+1. 打开 `TXT Visualizer`。
+2. 在 `Run directory` 选择某个 run 的输出目录。
+3. 左侧选择 `*.txt` 文件；右侧 `Plot` 可选择要绘制的列（默认使用第 0 列为 x）。
+
+## 5. macOS 常见问题
 
 - 如果运行时日志显示 `exitCode=9 (SIGKILL)`，通常是 Gatekeeper/隔离属性（quarantine）或依赖 dylib 缺失导致。可以尝试：
   - `xattr -dr com.apple.quarantine /Applications/PFC-Exp-GUI.app`

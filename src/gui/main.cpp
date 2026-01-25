@@ -193,6 +193,25 @@ QPlainTextEdit {
   selection-background-color: #4080FF;
 }
 
+QComboBox {
+  background: #101010;
+  border: 1px solid #2E2E2E;
+  border-radius: 10px;
+  padding: 6px 10px;
+}
+QComboBox:focus {
+  border: 1px solid #4080FF;
+}
+QComboBox::drop-down {
+  border: 0px;
+  width: 26px;
+}
+QComboBox QAbstractItemView {
+  background: #101010;
+  border: 1px solid #2E2E2E;
+  selection-background-color: #4080FF;
+}
+
 QToolButton, QPushButton {
   background: #232323;
   border: 1px solid #323232;
@@ -239,6 +258,34 @@ QProgressBar::chunk {
   border-radius: 8px;
   background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
     stop:0 #4080FF, stop:1 #7A5CFF);
+}
+
+QListWidget {
+  background: #0E0E0E;
+  border: 1px solid #2A2A2A;
+  border-radius: 14px;
+  padding: 6px;
+}
+QListWidget::item {
+  padding: 6px 8px;
+  border-radius: 10px;
+}
+QListWidget::item:selected {
+  background: #253A68;
+}
+
+QTableView {
+  background: #0E0E0E;
+  border: 1px solid #2A2A2A;
+  border-radius: 14px;
+  gridline-color: #2A2A2A;
+  selection-background-color: #253A68;
+}
+QHeaderView::section {
+  background: #1A1A1A;
+  color: #B7C6FF;
+  padding: 6px 8px;
+  border: 0px;
 }
 )QSS");
 }

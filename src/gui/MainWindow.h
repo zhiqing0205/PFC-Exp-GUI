@@ -6,11 +6,16 @@
 
 class QCheckBox;
 class QDoubleSpinBox;
+class QComboBox;
 class QLabel;
 class QLineEdit;
+class QListWidget;
 class QPlainTextEdit;
 class QProgressBar;
 class QSpinBox;
+class QTableWidget;
+
+class PlotWidget;
 
 struct RunParams {
     double u0 = 0.05;
@@ -71,6 +76,11 @@ private:
     void appendLog(const QString& text);
     void setRunningUi(bool running);
 
+    void setResultsDir(const QString& dirPath);
+    void refreshResultsFileList();
+    void loadResultsFile(const QString& filePath);
+    void applyResultsYColumn(int columnIndex);
+
     QProcess* process_ = nullptr;
     QVector<RunJob> jobQueue_;
     int currentJobIndex_ = -1;
@@ -127,4 +137,13 @@ private:
     QLineEdit* batchName_ = nullptr;
     QLabel* batchPreview_ = nullptr;
     QProgressBar* batchProgress_ = nullptr;
+
+    // Results/visualization widgets
+    QLineEdit* resultsDir_ = nullptr;
+    QListWidget* resultsFiles_ = nullptr;
+    QComboBox* resultsYColumn_ = nullptr;
+    QLabel* resultsInfo_ = nullptr;
+    PlotWidget* resultsPlot_ = nullptr;
+    QTableWidget* resultsTable_ = nullptr;
+    QVector<QVector<double>> resultsColumns_;
 };

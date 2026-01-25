@@ -44,7 +44,8 @@ add_executable(pfc_exp_gui WIN32 MACOSX_BUNDLE
   src/gui/main.cpp
   src/gui/MainWindow.cpp
   src/gui/MainWindow.h
+  src/gui/PlotWidget.cpp
+  src/gui/PlotWidget.h
 )
 target_link_libraries(pfc_exp_gui PRIVATE Qt6::Widgets)
 set_target_properties(pfc_exp_gui PROPERTIES OUTPUT_NAME "PFC-Exp-GUI")
-

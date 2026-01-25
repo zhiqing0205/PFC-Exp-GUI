@@ -1,6 +1,9 @@
 #include "MainWindow.h"
 
+#include "PlotWidget.h"
+
 #include <QCheckBox>
+#include <QComboBox>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDesktopServices>
@@ -17,10 +20,13 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QRegularExpression>
+#include <QTextStream>
 #include <QScrollArea>
 #include <QSplitter>
 #include <QSpinBox>
@@ -32,6 +38,12 @@
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QFontDatabase>
+#include <QTableWidget>
+#include <QHeaderView>
+
+#include <algorithm>
+#include <cmath>
+#include <limits>
 
 static QDoubleSpinBox* makeDoubleSpin(double min, double max, double value, int decimals, double step) {
     auto* box = new QDoubleSpinBox;
@@ -64,6 +76,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     auto* singleTab = new QWidget;
     auto* batchTab = new QWidget;
+    auto* resultsTab = new QWidget;
 
     auto* singleScroll = new QScrollArea;
     singleScroll->setFrameShape(QFrame::NoFrame);
@@ -75,8 +88,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     batchScroll->setWidgetResizable(true);
     batchScroll->setWidget(batchTab);
 
+    auto* resultsScroll = new QScrollArea;
+    resultsScroll->setFrameShape(QFrame::NoFrame);
+    resultsScroll->setWidgetResizable(true);
+    resultsScroll->setWidget(resultsTab);
+
     tabs->addTab(singleScroll, "Single Run");
     tabs->addTab(batchScroll, "Batch Sweep");
+    tabs->addTab(resultsScroll, "TXT Visualizer");
 
     log_ = new QPlainTextEdit;
     log_->setReadOnly(true);
@@ -411,6 +430,127 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     batchLayout->addWidget(batchButtons);
     batchLayout->addStretch(1);
 
+    // ---------- Results tab ----------
+    auto* resultsLayout = new QVBoxLayout;
+    resultsLayout->setSpacing(12);
+    resultsTab->setLayout(resultsLayout);
+
+    auto* resultsHint = new QLabel(
+        "Select an output run directory to visualize numeric data in *.txt files (e.g. energy.txt, phimax.txt).\n"
+        "The parser is generic: it extracts numbers from each line and plots selected columns.");
+    resultsHint->setProperty("hint", true);
+    resultsHint->setWordWrap(true);
+    resultsLayout->addWidget(resultsHint);
+
+    auto* resultsDirBox = new QGroupBox("Run directory");
+    auto* resultsDirRow = new QHBoxLayout;
+    resultsDirRow->setContentsMargins(0, 0, 0, 0);
+    resultsDir_ = new QLineEdit(defaultBaseOutputDir());
+    resultsDir_->setPlaceholderText("Select a run directory containing *.txt outputs");
+    auto* resultsBrowse = new QToolButton;
+    resultsBrowse->setText("Browse…");
+    resultsBrowse->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    resultsBrowse->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
+    auto* resultsRefresh = new QToolButton;
+    resultsRefresh->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    resultsRefresh->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
+    resultsRefresh->setToolTip("Refresh file list");
+    auto* resultsUseCurrent = new QPushButton("Use Current Output");
+    resultsUseCurrent->setIcon(style()->standardIcon(QStyle::SP_DialogApplyButton));
+
+    resultsDirRow->addWidget(resultsDir_, 1);
+    resultsDirRow->addWidget(resultsBrowse);
+    resultsDirRow->addWidget(resultsRefresh);
+    resultsDirRow->addWidget(resultsUseCurrent);
+    resultsDirBox->setLayout(resultsDirRow);
+    resultsLayout->addWidget(resultsDirBox);
+
+    auto* resultsSplit = new QSplitter(Qt::Horizontal);
+    resultsSplit->setHandleWidth(10);
+    resultsSplit->setChildrenCollapsible(false);
+
+    auto* filesBox = new QGroupBox("TXT files");
+    auto* filesLayout = new QVBoxLayout;
+    filesLayout->setContentsMargins(0, 0, 0, 0);
+    resultsFiles_ = new QListWidget;
+    resultsFiles_->setMinimumWidth(220);
+    filesLayout->addWidget(resultsFiles_);
+    filesBox->setLayout(filesLayout);
+
+    auto* viewTabs = new QTabWidget;
+    viewTabs->setDocumentMode(true);
+
+    auto* plotPage = new QWidget;
+    auto* plotLayout = new QVBoxLayout;
+    plotLayout->setContentsMargins(0, 0, 0, 0);
+    plotLayout->setSpacing(10);
+
+    auto* plotTopRow = new QWidget;
+    auto* plotTopLayout = new QHBoxLayout;
+    plotTopLayout->setContentsMargins(0, 0, 0, 0);
+    plotTopLayout->addWidget(new QLabel("Y column"));
+    resultsYColumn_ = new QComboBox;
+    resultsYColumn_->setMinimumWidth(180);
+    plotTopLayout->addWidget(resultsYColumn_);
+    plotTopLayout->addStretch(1);
+    plotTopRow->setLayout(plotTopLayout);
+
+    resultsPlot_ = new PlotWidget;
+    resultsInfo_ = new QLabel("Pick a file to visualize.");
+    resultsInfo_->setProperty("hint", true);
+    resultsInfo_->setWordWrap(true);
+
+    plotLayout->addWidget(plotTopRow);
+    plotLayout->addWidget(resultsPlot_, 1);
+    plotLayout->addWidget(resultsInfo_);
+    plotPage->setLayout(plotLayout);
+
+    auto* tablePage = new QWidget;
+    auto* tableLayout = new QVBoxLayout;
+    tableLayout->setContentsMargins(0, 0, 0, 0);
+    resultsTable_ = new QTableWidget;
+    resultsTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    resultsTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    resultsTable_->setAlternatingRowColors(true);
+    resultsTable_->horizontalHeader()->setStretchLastSection(true);
+    tableLayout->addWidget(resultsTable_);
+    tablePage->setLayout(tableLayout);
+
+    viewTabs->addTab(plotPage, "Plot");
+    viewTabs->addTab(tablePage, "Table");
+
+    resultsSplit->addWidget(filesBox);
+    resultsSplit->addWidget(viewTabs);
+    resultsSplit->setStretchFactor(0, 1);
+    resultsSplit->setStretchFactor(1, 3);
+    resultsSplit->setSizes(QList<int>() << 260 << 780);
+
+    resultsLayout->addWidget(resultsSplit, 1);
+
+    connect(resultsBrowse, &QToolButton::clicked, this, [this]() {
+        const QString base = resultsDir_ ? resultsDir_->text() : defaultBaseOutputDir();
+        const QString dir = QFileDialog::getExistingDirectory(this, "Select run directory", base);
+        if (!dir.isEmpty()) setResultsDir(dir);
+    });
+    connect(resultsRefresh, &QToolButton::clicked, this, [this]() { refreshResultsFileList(); });
+    connect(resultsUseCurrent, &QPushButton::clicked, this, [this]() {
+        if (!currentOutputDir_.isEmpty()) setResultsDir(currentOutputDir_);
+    });
+    connect(resultsDir_, &QLineEdit::editingFinished, this, [this]() { refreshResultsFileList(); });
+    connect(resultsFiles_, &QListWidget::currentTextChanged, this, [this](const QString& fileName) {
+        if (fileName.trimmed().isEmpty()) return;
+        const QString dir = resultsDir_ ? resultsDir_->text().trimmed() : QString();
+        if (dir.isEmpty()) return;
+        loadResultsFile(QDir(dir).filePath(fileName));
+    });
+    connect(resultsYColumn_, &QComboBox::currentIndexChanged, this, [this](int) {
+        if (!resultsYColumn_) return;
+        const int col = resultsYColumn_->currentData().toInt();
+        applyResultsYColumn(col);
+    });
+
+    refreshResultsFileList();
+
     auto connectValueChanged = [&](QObject* widget) {
         if (auto* d = qobject_cast<QDoubleSpinBox*>(widget)) {
             connect(d, &QDoubleSpinBox::valueChanged, this, &MainWindow::updateBatchPreview);
@@ -484,6 +624,208 @@ QString MainWindow::makeTimestampedDirName(const QString& prefix) const {
 QString MainWindow::formatRunLabel(int index, int total) const {
     if (total <= 1) return "Run";
     return QString("Run %1 / %2").arg(index).arg(total);
+}
+
+void MainWindow::setResultsDir(const QString& dirPath) {
+    if (!resultsDir_) return;
+    resultsDir_->setText(dirPath);
+    refreshResultsFileList();
+}
+
+void MainWindow::refreshResultsFileList() {
+    if (!resultsDir_ || !resultsFiles_ || !resultsInfo_ || !resultsPlot_ || !resultsYColumn_ || !resultsTable_) return;
+
+    const QString prev = resultsFiles_->currentItem() ? resultsFiles_->currentItem()->text() : QString();
+
+    resultsFiles_->clear();
+    resultsColumns_.clear();
+    resultsPlot_->clear();
+    resultsInfo_->setText("Pick a file to visualize.");
+    resultsYColumn_->clear();
+    resultsYColumn_->setEnabled(false);
+    resultsTable_->clear();
+    resultsTable_->setRowCount(0);
+    resultsTable_->setColumnCount(0);
+
+    const QString dirPath = resultsDir_->text().trimmed();
+    if (dirPath.isEmpty()) {
+        resultsInfo_->setText("Run directory is empty.");
+        return;
+    }
+    QDir dir(dirPath);
+    if (!dir.exists()) {
+        resultsInfo_->setText("Directory not found: " + dirPath);
+        return;
+    }
+
+    const QStringList files = dir.entryList(QStringList() << "*.txt", QDir::Files, QDir::Name);
+    if (files.isEmpty()) {
+        resultsInfo_->setText("No .txt files found in: " + dirPath);
+        return;
+    }
+
+    for (const QString& file : files) {
+        auto* item = new QListWidgetItem(file);
+        item->setToolTip(dir.filePath(file));
+        resultsFiles_->addItem(item);
+    }
+
+    resultsInfo_->setText(QString("Found %1 .txt file(s). Select one to visualize.").arg(files.size()));
+
+    if (!prev.isEmpty()) {
+        const QList<QListWidgetItem*> matches = resultsFiles_->findItems(prev, Qt::MatchExactly);
+        if (!matches.isEmpty()) {
+            resultsFiles_->setCurrentItem(matches.first());
+            return;
+        }
+    }
+    resultsFiles_->setCurrentRow(0);
+}
+
+static QVector<double> extractNumbersFromLine(const QString& line) {
+    static const QRegularExpression re(R"([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)");
+    QVector<double> nums;
+    auto it = re.globalMatch(line);
+    while (it.hasNext()) {
+        const auto m = it.next();
+        bool ok = false;
+        const double v = m.captured(0).toDouble(&ok);
+        if (ok) nums.push_back(v);
+    }
+    return nums;
+}
+
+void MainWindow::loadResultsFile(const QString& filePath) {
+    if (!resultsInfo_ || !resultsPlot_ || !resultsYColumn_ || !resultsTable_) return;
+
+    resultsColumns_.clear();
+    resultsPlot_->clear();
+    resultsYColumn_->clear();
+    resultsYColumn_->setEnabled(false);
+    resultsTable_->clear();
+    resultsTable_->setRowCount(0);
+    resultsTable_->setColumnCount(0);
+
+    QFile f(filePath);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        resultsInfo_->setText("Failed to open: " + filePath);
+        return;
+    }
+
+    QTextStream in(&f);
+    QVector<QVector<double>> rows;
+    rows.reserve(2048);
+    int maxCols = 0;
+    while (!in.atEnd()) {
+        QString line = in.readLine().trimmed();
+        if (line.isEmpty()) continue;
+        if (line.startsWith('#')) continue;
+        const QVector<double> nums = extractNumbersFromLine(line);
+        if (nums.isEmpty()) continue;
+        maxCols = std::max(maxCols, static_cast<int>(nums.size()));
+        rows.push_back(nums);
+    }
+
+    if (rows.isEmpty() || maxCols <= 0) {
+        resultsInfo_->setText("No numeric data found in: " + QFileInfo(filePath).fileName());
+        return;
+    }
+
+    resultsColumns_.resize(maxCols);
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    for (const auto& row : rows) {
+        for (int c = 0; c < maxCols; ++c) {
+            resultsColumns_[c].push_back(c < row.size() ? row[c] : nan);
+        }
+    }
+
+    resultsTable_->setRowCount(rows.size());
+    resultsTable_->setColumnCount(maxCols);
+    QStringList headers;
+    headers.reserve(maxCols);
+    for (int c = 0; c < maxCols; ++c) headers << QString("col%1").arg(c);
+    resultsTable_->setHorizontalHeaderLabels(headers);
+    for (int r = 0; r < rows.size(); ++r) {
+        for (int c = 0; c < maxCols; ++c) {
+            const double v = (c < rows[r].size()) ? rows[r][c] : nan;
+            auto* item = new QTableWidgetItem(std::isfinite(v) ? QString::number(v, 'g', 12) : QString());
+            resultsTable_->setItem(r, c, item);
+        }
+    }
+
+    const QString name = QFileInfo(filePath).fileName();
+    const QString base = name.toLower();
+    auto colLabel = [&](int c) -> QString {
+        if (maxCols <= 1) return "value";
+        if (base.contains("energy")) {
+            if (c == 0) return "step";
+            if (c == 1) return "energy";
+            if (c == 2) return "density";
+        }
+        if (base.contains("phimax")) {
+            if (c == 0) return "step";
+            if (c == 1) return "phic";
+            if (c == 2) return "phimax";
+            if (c == 3) return "myid";
+        }
+        if (base.contains("checkpoint")) {
+            if (c == 0) return "step";
+            if (c == 1) return "timestamp_ms";
+        }
+        return QString("col%1").arg(c);
+    };
+
+    resultsYColumn_->clear();
+    if (maxCols <= 1) {
+        resultsYColumn_->addItem(colLabel(0), 0);
+        resultsYColumn_->setEnabled(false);
+        resultsInfo_->setText(QString("%1 • %2 row(s) • %3 col(s)").arg(name).arg(rows.size()).arg(maxCols));
+        applyResultsYColumn(0);
+        return;
+    }
+
+    for (int c = 1; c < maxCols; ++c) {
+        resultsYColumn_->addItem(colLabel(c) + QString(" (col%1)").arg(c), c);
+    }
+    resultsYColumn_->setEnabled(true);
+    resultsYColumn_->setCurrentIndex(0);
+
+    resultsInfo_->setText(QString("%1 • %2 row(s) • %3 col(s) • x=%4").arg(name).arg(rows.size()).arg(maxCols).arg(colLabel(0)));
+    applyResultsYColumn(resultsYColumn_->currentData().toInt());
+}
+
+void MainWindow::applyResultsYColumn(int columnIndex) {
+    if (!resultsPlot_ || resultsColumns_.isEmpty()) return;
+
+    const int cols = resultsColumns_.size();
+    const int n = resultsColumns_.at(0).size();
+    if (n <= 0) {
+        resultsPlot_->clear();
+        return;
+    }
+
+    QVector<double> xs;
+    QVector<double> ys;
+    xs.reserve(n);
+    ys.reserve(n);
+
+    QString yLabel;
+    if (cols <= 1) {
+        for (int i = 0; i < n; ++i) {
+            xs.push_back(i);
+            ys.push_back(resultsColumns_.at(0).at(i));
+        }
+        yLabel = "value";
+    } else {
+        const int ycol = std::clamp(columnIndex, 1, cols - 1);
+        for (int i = 0; i < n; ++i) {
+            xs.push_back(resultsColumns_.at(0).at(i));
+            ys.push_back(resultsColumns_.at(ycol).at(i));
+        }
+        yLabel = QString("col%1").arg(ycol);
+    }
+
+    resultsPlot_->setData(std::move(xs), std::move(ys), yLabel);
 }
 
 RunParams MainWindow::singleParams() const {
