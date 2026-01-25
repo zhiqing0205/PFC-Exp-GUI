@@ -3,6 +3,7 @@
 #include <QMainWindow>
 #include <QProcess>
 #include <QVector>
+#include <QSize>
 
 class QCheckBox;
 class QDoubleSpinBox;
@@ -163,4 +164,10 @@ private:
     QString resultsCurrentFile_;
     bool resultsImageEnabled_ = false;
     QVector<QVector<double>> resultsColumns_;
+
+    // Heatmap rendering buffers (reusable to avoid frequent allocations)
+    QSize resultsImageBufferSize_;
+    QVector<float> resultsImageSum_;
+    QVector<float> resultsImageWsum_;
+    QVector<float> resultsImageWmax_;
 };

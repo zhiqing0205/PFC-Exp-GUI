@@ -19,6 +19,7 @@
 #include <QGraphicsScene>
 #include <QGraphicsView>
 #include <QHBoxLayout>
+#include <QHash>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
@@ -47,7 +48,9 @@
 #include <QWheelEvent>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstring>
 #include <limits>
 
 static QDoubleSpinBox* makeDoubleSpin(double min, double max, double value, int decimals, double step) {
@@ -574,8 +577,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resultsImageValue_->setMinimumWidth(180);
     resultsImageValue_->setEnabled(false);
     imageTopLayout->addWidget(resultsImageValue_);
-    imageTopLayout->addWidget(new QLabel("Dot size"));
-    resultsImagePointSize_ = makeIntSpin(1, 16, 3, 1);
+    imageTopLayout->addWidget(new QLabel("Smooth σ (px)"));
+    resultsImagePointSize_ = makeIntSpin(1, 64, 16, 1);
+    resultsImagePointSize_->setToolTip("Gaussian smoothing radius (σ). Higher values create smoother heatmaps.");
     resultsImagePointSize_->setEnabled(false);
     imageTopLayout->addWidget(resultsImagePointSize_);
     imageTopLayout->addStretch(1);
@@ -1094,6 +1098,79 @@ static QColor jetLikeColor(double t) {
     return QColor::fromRgbF(r, g, b);
 }
 
+// ============================================================================
+// Heatmap helper functions
+// ============================================================================
+
+/// @brief Pre-computed 256-level color lookup table for jet-like colormap.
+/// @return Static array of QRgb colors (blue -> red gradient).
+static const std::array<QRgb, 256>& jetLikeLut() {
+    static const std::array<QRgb, 256> lut = []() {
+        std::array<QRgb, 256> out{};
+        for (int i = 0; i < static_cast<int>(out.size()); ++i) {
+            const double t = static_cast<double>(i) / static_cast<double>(out.size() - 1);
+            out[static_cast<size_t>(i)] = jetLikeColor(t).rgba();
+        }
+        return out;
+    }();
+    return lut;
+}
+
+/// @brief Smooth Hermite interpolation (3rd order).
+/// @param edge0 Lower edge of the transition range.
+/// @param edge1 Upper edge of the transition range.
+/// @param x Input value to interpolate.
+/// @return Smoothstep result in [0, 1].
+static double smoothstep(double edge0, double edge1, double x) {
+    if (edge0 == edge1) return x < edge0 ? 0.0 : 1.0;
+    const double t = std::clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
+}
+
+/// @brief Linearly interpolate two QRgb colors.
+/// @param a Start color (t=0).
+/// @param b End color (t=1).
+/// @param t Interpolation factor in [0, 1].
+/// @return Interpolated QRgb color.
+static QRgb lerpRgb(QRgb a, QRgb b, double t) {
+    t = std::clamp(t, 0.0, 1.0);
+    const int ar = qRed(a), ag = qGreen(a), ab = qBlue(a);
+    const int br = qRed(b), bg = qGreen(b), bb = qBlue(b);
+    const int r = std::clamp(static_cast<int>(std::lround(ar + (br - ar) * t)), 0, 255);
+    const int g = std::clamp(static_cast<int>(std::lround(ag + (bg - ag) * t)), 0, 255);
+    const int bl = std::clamp(static_cast<int>(std::lround(ab + (bb - ab) * t)), 0, 255);
+    return qRgb(r, g, bl);
+}
+
+/// @brief Extract bit pattern of a double (for precise hashing).
+/// @param v Double value.
+/// @return 64-bit representation, with -0.0 normalized to +0.0.
+static quint64 doubleBits(double v) {
+    quint64 bits = 0;
+    static_assert(sizeof(bits) == sizeof(v), "unexpected double size");
+    std::memcpy(&bits, &v, sizeof(bits));
+    // Normalize -0.0 to +0.0 for deduplication.
+    if (bits == 0x8000000000000000ULL) bits = 0;
+    return bits;
+}
+
+/// @brief Key for hashing (x, y) coordinate pairs by bit pattern.
+struct XYKey {
+    quint64 xb = 0;
+    quint64 yb = 0;
+};
+
+static inline bool operator==(const XYKey& a, const XYKey& b) noexcept {
+    return a.xb == b.xb && a.yb == b.yb;
+}
+
+/// @brief Hash function for XYKey (required by QHash).
+inline uint qHash(const XYKey& key, uint seed = 0) noexcept {
+    // Boost-like 64-bit hash combining.
+    const quint64 mixed = key.xb ^ (key.yb + 0x9e3779b97f4a7c15ULL + (key.xb << 6) + (key.xb >> 2));
+    return qHash(mixed, seed);
+}
+
 void MainWindow::renderResultsImage() {
     if (!resultsImageEnabled_ || !resultsImageItem_ || !resultsImageScene_ || !resultsImageView_ || !resultsImageInfo_) {
         return;
@@ -1120,29 +1197,72 @@ void MainWindow::renderResultsImage() {
         return;
     }
 
-    double minX = std::numeric_limits<double>::infinity();
-    double maxX = -std::numeric_limits<double>::infinity();
-    double minY = std::numeric_limits<double>::infinity();
-    double maxY = -std::numeric_limits<double>::infinity();
-    double minV = std::numeric_limits<double>::infinity();
-    double maxV = -std::numeric_limits<double>::infinity();
-    int count = 0;
+    // ========================================================================
+    // Step 1: Deduplicate by exact (x, y) coordinates and average values
+    // ========================================================================
+    struct Accum {
+        double x = 0.0;
+        double y = 0.0;
+        double sumV = 0.0;
+        int count = 0;
+    };
+    QHash<XYKey, Accum> dedup;
+    dedup.reserve(n);
+    int rawCount = 0;
 
     for (int i = 0; i < n; ++i) {
         const double x = resultsColumns_.at(xCol).at(i);
         const double y = resultsColumns_.at(yCol).at(i);
         const double v = resultsColumns_.at(valueCol).at(i);
         if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(v)) continue;
-        minX = std::min(minX, x);
-        maxX = std::max(maxX, x);
-        minY = std::min(minY, y);
-        maxY = std::max(maxY, y);
-        minV = std::min(minV, v);
-        maxV = std::max(maxV, v);
-        count++;
+        rawCount++;
+        const XYKey key{doubleBits(x), doubleBits(y)};
+        auto it = dedup.find(key);
+        if (it == dedup.end()) {
+            dedup.insert(key, Accum{x, y, v, 1});
+        } else {
+            it->sumV += v;
+            it->count += 1;
+        }
     }
 
-    if (count <= 0 || !std::isfinite(minX) || !std::isfinite(maxX) || !std::isfinite(minY) || !std::isfinite(maxY)) {
+    if (dedup.isEmpty()) {
+        resultsImageInfo_->setText("No finite point data found.");
+        resultsImageItem_->setPixmap(QPixmap());
+        return;
+    }
+
+    // Build deduplicated point list with averaged values
+    struct Pt {
+        double x = 0.0;
+        double y = 0.0;
+        double v = 0.0;
+    };
+    QVector<Pt> points;
+    points.reserve(dedup.size());
+
+    double minX = std::numeric_limits<double>::infinity();
+    double maxX = -std::numeric_limits<double>::infinity();
+    double minY = std::numeric_limits<double>::infinity();
+    double maxY = -std::numeric_limits<double>::infinity();
+    double minV = std::numeric_limits<double>::infinity();
+    double maxV = -std::numeric_limits<double>::infinity();
+
+    for (auto it = dedup.constBegin(); it != dedup.constEnd(); ++it) {
+        const Accum& a = it.value();
+        if (a.count <= 0) continue;
+        const double vAvg = a.sumV / static_cast<double>(a.count);
+        points.push_back(Pt{a.x, a.y, vAvg});
+        minX = std::min(minX, a.x);
+        maxX = std::max(maxX, a.x);
+        minY = std::min(minY, a.y);
+        maxY = std::max(maxY, a.y);
+        minV = std::min(minV, vAvg);
+        maxV = std::max(maxV, vAvg);
+    }
+
+    const int uniqueCount = points.size();
+    if (uniqueCount <= 0 || !std::isfinite(minX) || !std::isfinite(maxX) || !std::isfinite(minY) || !std::isfinite(maxY)) {
         resultsImageInfo_->setText("No finite point data found.");
         resultsImageItem_->setPixmap(QPixmap());
         return;
@@ -1159,42 +1279,112 @@ void MainWindow::renderResultsImage() {
         width = std::max(1, static_cast<int>(std::lround(static_cast<double>(longSide) * (rangeX / rangeY))));
     }
 
-    QImage img(width, height, QImage::Format_ARGB32_Premultiplied);
-    img.fill(jetLikeColor(0.0));
+    // ========================================================================
+    // Step 2: Gaussian kernel interpolation
+    // ========================================================================
+    // Interpret "Smooth σ (px)" spinbox value as σ (Gaussian standard deviation).
+    // Use search radius R = 3σ for Gaussian kernel: w(d) = exp(-d²/(2σ²))
+    const int sigmaPx = std::clamp(resultsImagePointSize_->value(), 1, 64);
+    const int radiusPx = sigmaPx * 3;  // Search radius R = 3σ
+    const int r2 = radiusPx * radiusPx;
+    const double sigma = std::max(1e-6, static_cast<double>(sigmaPx));
+    const double invTwoSigma2 = 1.0 / (2.0 * sigma * sigma);
 
+    // Pre-compute Gaussian weights by squared distance
+    QVector<float> wByD2(r2 + 1, 0.0f);
+    for (int d2 = 0; d2 <= r2; ++d2) {
+        wByD2[d2] = static_cast<float>(std::exp(-static_cast<double>(d2) * invTwoSigma2));
+    }
+
+    // Reuse buffers if possible
+    const int pixels = width * height;
+    const QSize newSize(width, height);
+    if (resultsImageBufferSize_ != newSize) {
+        resultsImageBufferSize_ = newSize;
+        resultsImageSum_.resize(pixels);
+        resultsImageWsum_.resize(pixels);
+        resultsImageWmax_.resize(pixels);
+    }
+    // Clear buffers
+    std::fill(resultsImageSum_.begin(), resultsImageSum_.end(), 0.0f);
+    std::fill(resultsImageWsum_.begin(), resultsImageWsum_.end(), 0.0f);
+    std::fill(resultsImageWmax_.begin(), resultsImageWmax_.end(), 0.0f);
+
+    const double sx = (width - 1) / rangeX;
+    const double sy = (height - 1) / rangeY;
+
+    // Splat each point into its neighborhood
+    for (const Pt& pt : points) {
+        const int cx = std::clamp(static_cast<int>(std::lround((pt.x - minX) * sx)), 0, width - 1);
+        const int cy = std::clamp(static_cast<int>(std::lround((maxY - pt.y) * sy)), 0, height - 1);
+        const int x0 = std::max(0, cx - radiusPx);
+        const int x1 = std::min(width - 1, cx + radiusPx);
+        const int y0 = std::max(0, cy - radiusPx);
+        const int y1 = std::min(height - 1, cy + radiusPx);
+
+        const float v = static_cast<float>(pt.v);
+        for (int py = y0; py <= y1; ++py) {
+            const int dy = py - cy;
+            const int dy2 = dy * dy;
+            const int rowOffset = py * width;
+            for (int px = x0; px <= x1; ++px) {
+                const int dx = px - cx;
+                const int d2 = dx * dx + dy2;
+                if (d2 > r2) continue;
+                const float w = wByD2[d2];
+                const int idx = rowOffset + px;
+                resultsImageWsum_[idx] += w;
+                resultsImageSum_[idx] += w * v;
+                resultsImageWmax_[idx] = std::max(resultsImageWmax_[idx], w);
+            }
+        }
+    }
+
+    // ========================================================================
+    // Step 3: Colorize with boundary whitespace
+    // ========================================================================
+    // wMax ≈ exp(-d_min²/(2σ²)) gives coverage mask.
+    // Start fading to white at ~3σ, fully colored by ~2.5σ.
+    constexpr double kFadeStartSigma = 3.0;
+    constexpr double kFadeEndSigma = 2.5;
+    const double fadeLo = std::exp(-0.5 * kFadeStartSigma * kFadeStartSigma);
+    const double fadeHi = std::exp(-0.5 * kFadeEndSigma * kFadeEndSigma);
+
+    const auto& lut = jetLikeLut();
+    const QRgb white = qRgb(255, 255, 255);
     const double invRangeV = (std::isfinite(minV) && std::isfinite(maxV) && (maxV - minV) > 1e-12)
                                  ? (1.0 / (maxV - minV))
                                  : 0.0;
-    const double sx = (width - 1) / rangeX;
-    const double sy = (height - 1) / rangeY;
-    const int dot = std::clamp(resultsImagePointSize_->value(), 1, 64);
 
-    if (dot <= 1) {
-        for (int i = 0; i < n; ++i) {
-            const double x = resultsColumns_.at(xCol).at(i);
-            const double y = resultsColumns_.at(yCol).at(i);
-            const double v = resultsColumns_.at(valueCol).at(i);
-            if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(v)) continue;
-            const int px = std::clamp(static_cast<int>(std::lround((x - minX) * sx)), 0, width - 1);
-            const int py = std::clamp(static_cast<int>(std::lround((maxY - y) * sy)), 0, height - 1);
-            const double t = invRangeV > 0.0 ? ((v - minV) * invRangeV) : 0.5;
-            img.setPixelColor(px, py, jetLikeColor(t));
-        }
-    } else {
-        QPainter p(&img);
-        p.setRenderHint(QPainter::Antialiasing, true);
-        p.setPen(Qt::NoPen);
-        const double r = static_cast<double>(dot) * 0.5;
-        for (int i = 0; i < n; ++i) {
-            const double x = resultsColumns_.at(xCol).at(i);
-            const double y = resultsColumns_.at(yCol).at(i);
-            const double v = resultsColumns_.at(valueCol).at(i);
-            if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(v)) continue;
-            const double t = invRangeV > 0.0 ? ((v - minV) * invRangeV) : 0.5;
-            p.setBrush(jetLikeColor(t));
-            const double px = (x - minX) * sx;
-            const double py = (maxY - y) * sy;
-            p.drawEllipse(QPointF(px, py), r, r);
+    QImage img(width, height, QImage::Format_ARGB32);
+    img.fill(Qt::white);
+
+    for (int y = 0; y < height; ++y) {
+        auto* dst = reinterpret_cast<QRgb*>(img.scanLine(y));
+        const int row = y * width;
+        for (int x = 0; x < width; ++x) {
+            const int idx = row + x;
+            const float wSum = resultsImageWsum_[idx];
+            if (wSum <= 0.0f) {
+                dst[x] = white;
+                continue;
+            }
+            const float wMax = resultsImageWmax_[idx];
+            if (wMax <= static_cast<float>(fadeLo)) {
+                dst[x] = white;
+                continue;
+            }
+
+            // Normalized field value
+            const double v = static_cast<double>(resultsImageSum_[idx]) / static_cast<double>(wSum);
+            double t = invRangeV > 0.0 ? ((v - minV) * invRangeV) : 0.5;
+            t = std::clamp(t, 0.0, 1.0);
+            const int li = std::clamp(static_cast<int>(std::lround(t * 255.0)), 0, 255);
+            const QRgb c = lut[static_cast<size_t>(li)];
+
+            // Fade to white if coverage is low
+            const double alpha = smoothstep(fadeLo, fadeHi, static_cast<double>(wMax));
+            dst[x] = lerpRgb(white, c, alpha);
         }
     }
 
@@ -1203,16 +1393,18 @@ void MainWindow::renderResultsImage() {
 
     const QString valueLabel = resultsImageValue_->currentText();
     resultsImageInfo_->setText(
-        QString("%1 • points=%2 • x=[%3, %4] y=[%5, %6] • %7=[%8, %9] • Ctrl+wheel zoom")
+        QString("%1 • points=%2 • unique(x,y)=%3 • σ=%4px • x=[%5,%6] y=[%7,%8] • %9=[%10,%11] • Ctrl+wheel zoom")
             .arg(QFileInfo(resultsCurrentFile_).fileName())
-            .arg(count)
-            .arg(minX, 0, 'g', 10)
-            .arg(maxX, 0, 'g', 10)
-            .arg(minY, 0, 'g', 10)
-            .arg(maxY, 0, 'g', 10)
+            .arg(rawCount)
+            .arg(uniqueCount)
+            .arg(sigmaPx)
+            .arg(minX, 0, 'g', 4)
+            .arg(maxX, 0, 'g', 4)
+            .arg(minY, 0, 'g', 4)
+            .arg(maxY, 0, 'g', 4)
             .arg(valueLabel)
-            .arg(minV, 0, 'g', 10)
-            .arg(maxV, 0, 'g', 10));
+            .arg(minV, 0, 'g', 4)
+            .arg(maxV, 0, 'g', 4));
 
     fitResultsImage();
 }
