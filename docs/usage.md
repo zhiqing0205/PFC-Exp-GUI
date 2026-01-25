@@ -38,11 +38,13 @@ Batch Sweep 支持对 `u0 / con0 / steps` 设置区间与步长，并按笛卡�
 
 ## 4. TXT 可视化（TXT Visualizer）
 
-GUI 提供 `TXT Visualizer` 标签页，用于快速查看输出目录中的 `*.txt`（例如 `energy.txt`、`phimax.txt`、`checkpoint_timestamps.txt`）：
+GUI 提供 `TXT Visualizer` 标签页，用于快速查看输出目录中的 `*.txt`：
 
 1. 打开 `TXT Visualizer`。
 2. 在 `Run directory` 选择某个 run 的输出目录。
-3. 左侧选择 `*.txt` 文件；右侧 `Plot` 可选择要绘制的列（默认使用第 0 列为 x）。
+3. 左侧选择 `*.txt` 文件：
+   - `energy.txt` / `checkpoint_timestamps.txt`：右侧使用 `Plot`（默认第 0 列为 x）。
+   - `Phimax_*.txt`（或 `Phimaxq4q6_*.txt`）：右侧切到 `Image` 渲染二维快照（支持 `Ctrl+滚轮` 缩放、可导出 PNG）。
 
 ## 5. macOS 常见问题
 

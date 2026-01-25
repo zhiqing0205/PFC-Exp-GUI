@@ -7,12 +7,16 @@
 class QCheckBox;
 class QDoubleSpinBox;
 class QComboBox;
+class QGraphicsPixmapItem;
+class QGraphicsScene;
+class QGraphicsView;
 class QLabel;
 class QLineEdit;
 class QListWidget;
 class QPlainTextEdit;
 class QProgressBar;
 class QSpinBox;
+class QTabWidget;
 class QTableWidget;
 
 class PlotWidget;
@@ -80,6 +84,9 @@ private:
     void refreshResultsFileList();
     void loadResultsFile(const QString& filePath);
     void applyResultsYColumn(int columnIndex);
+    void renderResultsImage();
+    void fitResultsImage();
+    void exportResultsImage();
 
     QProcess* process_ = nullptr;
     QVector<RunJob> jobQueue_;
@@ -141,9 +148,19 @@ private:
     // Results/visualization widgets
     QLineEdit* resultsDir_ = nullptr;
     QListWidget* resultsFiles_ = nullptr;
+    QTabWidget* resultsViewTabs_ = nullptr;
+    QWidget* resultsImagePage_ = nullptr;
     QComboBox* resultsYColumn_ = nullptr;
     QLabel* resultsInfo_ = nullptr;
     PlotWidget* resultsPlot_ = nullptr;
     QTableWidget* resultsTable_ = nullptr;
+    QComboBox* resultsImageValue_ = nullptr;
+    QSpinBox* resultsImagePointSize_ = nullptr;
+    QLabel* resultsImageInfo_ = nullptr;
+    QGraphicsView* resultsImageView_ = nullptr;
+    QGraphicsScene* resultsImageScene_ = nullptr;
+    QGraphicsPixmapItem* resultsImageItem_ = nullptr;
+    QString resultsCurrentFile_;
+    bool resultsImageEnabled_ = false;
     QVector<QVector<double>> resultsColumns_;
 };

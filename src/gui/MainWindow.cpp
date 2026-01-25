@@ -15,6 +15,9 @@
 #include <QFrame>
 #include <QGridLayout>
 #include <QGroupBox>
+#include <QGraphicsPixmapItem>
+#include <QGraphicsScene>
+#include <QGraphicsView>
 #include <QHBoxLayout>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -22,6 +25,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QPainter>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
@@ -40,6 +44,7 @@
 #include <QFontDatabase>
 #include <QTableWidget>
 #include <QHeaderView>
+#include <QWheelEvent>
 
 #include <algorithm>
 #include <cmath>
@@ -63,6 +68,23 @@ static QSpinBox* makeIntSpin(int min, int max, int value, int step) {
     box->setKeyboardTracking(false);
     return box;
 }
+
+class ZoomableGraphicsView final : public QGraphicsView {
+public:
+    using QGraphicsView::QGraphicsView;
+
+protected:
+    void wheelEvent(QWheelEvent* event) override {
+        if (event->modifiers().testFlag(Qt::ControlModifier)) {
+            constexpr double base = 1.0015;
+            const double factor = std::pow(base, static_cast<double>(event->angleDelta().y()));
+            scale(factor, factor);
+            event->accept();
+            return;
+        }
+        QGraphicsView::wheelEvent(event);
+    }
+};
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("PFC-Exp-GUI");
@@ -436,8 +458,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resultsTab->setLayout(resultsLayout);
 
     auto* resultsHint = new QLabel(
-        "Select an output run directory to visualize numeric data in *.txt files (e.g. energy.txt, phimax.txt).\n"
-        "The parser is generic: it extracts numbers from each line and plots selected columns.");
+        "Select an output run directory to visualize numeric data in *.txt files.\n"
+        "Tips:\n"
+        "• energy.txt / phimax.txt: use Plot (x=step)\n"
+        "• Phimax_*.txt: use Image to render a 2D snapshot (Ctrl+wheel to zoom)");
     resultsHint->setProperty("hint", true);
     resultsHint->setWordWrap(true);
     resultsLayout->addWidget(resultsHint);
@@ -477,8 +501,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     filesLayout->addWidget(resultsFiles_);
     filesBox->setLayout(filesLayout);
 
-    auto* viewTabs = new QTabWidget;
-    viewTabs->setDocumentMode(true);
+    resultsViewTabs_ = new QTabWidget;
+    resultsViewTabs_->setDocumentMode(true);
 
     auto* plotPage = new QWidget;
     auto* plotLayout = new QVBoxLayout;
@@ -516,11 +540,65 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     tableLayout->addWidget(resultsTable_);
     tablePage->setLayout(tableLayout);
 
-    viewTabs->addTab(plotPage, "Plot");
-    viewTabs->addTab(tablePage, "Table");
+    auto* imagePage = new QWidget;
+    auto* imageLayout = new QVBoxLayout;
+    imageLayout->setContentsMargins(0, 0, 0, 0);
+    imageLayout->setSpacing(10);
+
+    auto* imageTopRow = new QWidget;
+    auto* imageTopLayout = new QHBoxLayout;
+    imageTopLayout->setContentsMargins(0, 0, 0, 0);
+    imageTopLayout->addWidget(new QLabel("Value"));
+    resultsImageValue_ = new QComboBox;
+    resultsImageValue_->setMinimumWidth(180);
+    resultsImageValue_->setEnabled(false);
+    imageTopLayout->addWidget(resultsImageValue_);
+    imageTopLayout->addWidget(new QLabel("Dot size"));
+    resultsImagePointSize_ = makeIntSpin(1, 16, 2, 1);
+    resultsImagePointSize_->setEnabled(false);
+    imageTopLayout->addWidget(resultsImagePointSize_);
+    imageTopLayout->addStretch(1);
+
+    auto* imageFit = new QToolButton;
+    imageFit->setText("Fit");
+    imageFit->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    imageFit->setIcon(style()->standardIcon(QStyle::SP_DesktopIcon));
+    imageTopLayout->addWidget(imageFit);
+
+    auto* imageExport = new QToolButton;
+    imageExport->setText("Export PNG…");
+    imageExport->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    imageExport->setIcon(style()->standardIcon(QStyle::SP_DialogSaveButton));
+    imageTopLayout->addWidget(imageExport);
+    imageTopRow->setLayout(imageTopLayout);
+
+    resultsImageInfo_ = new QLabel("Select a Phimax_*.txt snapshot file to render.");
+    resultsImageInfo_->setProperty("hint", true);
+    resultsImageInfo_->setWordWrap(true);
+
+    resultsImageScene_ = new QGraphicsScene(this);
+    resultsImageView_ = new ZoomableGraphicsView;
+    resultsImageView_->setScene(resultsImageScene_);
+    resultsImageView_->setFrameShape(QFrame::NoFrame);
+    resultsImageView_->setBackgroundBrush(QColor(20, 20, 24));
+    resultsImageView_->setRenderHint(QPainter::Antialiasing, true);
+    resultsImageView_->setDragMode(QGraphicsView::ScrollHandDrag);
+    resultsImageView_->setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
+    resultsImageView_->setResizeAnchor(QGraphicsView::AnchorUnderMouse);
+    resultsImageItem_ = resultsImageScene_->addPixmap(QPixmap());
+
+    imageLayout->addWidget(imageTopRow);
+    imageLayout->addWidget(resultsImageView_, 1);
+    imageLayout->addWidget(resultsImageInfo_);
+    imagePage->setLayout(imageLayout);
+    resultsImagePage_ = imagePage;
+
+    resultsViewTabs_->addTab(plotPage, "Plot");
+    resultsViewTabs_->addTab(tablePage, "Table");
+    resultsViewTabs_->addTab(imagePage, "Image");
 
     resultsSplit->addWidget(filesBox);
-    resultsSplit->addWidget(viewTabs);
+    resultsSplit->addWidget(resultsViewTabs_);
     resultsSplit->setStretchFactor(0, 1);
     resultsSplit->setStretchFactor(1, 3);
     resultsSplit->setSizes(QList<int>() << 260 << 780);
@@ -548,6 +626,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         const int col = resultsYColumn_->currentData().toInt();
         applyResultsYColumn(col);
     });
+
+    connect(resultsImageValue_, &QComboBox::currentIndexChanged, this, [this](int) { renderResultsImage(); });
+    connect(resultsImagePointSize_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int) { renderResultsImage(); });
+    connect(imageFit, &QToolButton::clicked, this, [this]() { fitResultsImage(); });
+    connect(imageExport, &QToolButton::clicked, this, [this]() { exportResultsImage(); });
 
     refreshResultsFileList();
 
@@ -638,6 +721,8 @@ void MainWindow::refreshResultsFileList() {
     const QString prev = resultsFiles_->currentItem() ? resultsFiles_->currentItem()->text() : QString();
 
     resultsFiles_->clear();
+    resultsCurrentFile_.clear();
+    resultsImageEnabled_ = false;
     resultsColumns_.clear();
     resultsPlot_->clear();
     resultsInfo_->setText("Pick a file to visualize.");
@@ -646,6 +731,22 @@ void MainWindow::refreshResultsFileList() {
     resultsTable_->clear();
     resultsTable_->setRowCount(0);
     resultsTable_->setColumnCount(0);
+    if (resultsImageValue_) {
+        resultsImageValue_->clear();
+        resultsImageValue_->setEnabled(false);
+    }
+    if (resultsImagePointSize_) {
+        resultsImagePointSize_->setEnabled(false);
+    }
+    if (resultsImageInfo_) {
+        resultsImageInfo_->setText("Select a Phimax_*.txt snapshot file to render.");
+    }
+    if (resultsImageItem_) {
+        resultsImageItem_->setPixmap(QPixmap());
+    }
+    if (resultsImageView_) {
+        resultsImageView_->resetTransform();
+    }
 
     const QString dirPath = resultsDir_->text().trimmed();
     if (dirPath.isEmpty()) {
@@ -698,6 +799,8 @@ static QVector<double> extractNumbersFromLine(const QString& line) {
 void MainWindow::loadResultsFile(const QString& filePath) {
     if (!resultsInfo_ || !resultsPlot_ || !resultsYColumn_ || !resultsTable_) return;
 
+    resultsCurrentFile_ = filePath;
+    resultsImageEnabled_ = false;
     resultsColumns_.clear();
     resultsPlot_->clear();
     resultsYColumn_->clear();
@@ -705,6 +808,19 @@ void MainWindow::loadResultsFile(const QString& filePath) {
     resultsTable_->clear();
     resultsTable_->setRowCount(0);
     resultsTable_->setColumnCount(0);
+    if (resultsImageValue_) {
+        resultsImageValue_->clear();
+        resultsImageValue_->setEnabled(false);
+    }
+    if (resultsImagePointSize_) {
+        resultsImagePointSize_->setEnabled(false);
+    }
+    if (resultsImageInfo_) {
+        resultsImageInfo_->setText("Select a Phimax_*.txt snapshot file to render.");
+    }
+    if (resultsImageItem_) {
+        resultsImageItem_->setPixmap(QPixmap());
+    }
 
     QFile f(filePath);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -712,14 +828,41 @@ void MainWindow::loadResultsFile(const QString& filePath) {
         return;
     }
 
+    const QString name = QFileInfo(filePath).fileName();
+    const QString base = name.toLower();
+    const bool isPhimaxSnapshot = base.startsWith("phimax_") || base.startsWith("phimaxq4q6_") || base.startsWith("phimaxq");
+
+    bool skipKommentarHeader = false;
+    {
+        QTextStream probe(&f);
+        QString first;
+        QString second;
+        while (!probe.atEnd()) {
+            const QString line = probe.readLine().trimmed();
+            if (line.isEmpty() || line.startsWith('#')) continue;
+            if (first.isEmpty()) {
+                first = line;
+                continue;
+            }
+            second = line;
+            break;
+        }
+        static const QRegularExpression intOnly(R"(^[+-]?\d+$)");
+        skipKommentarHeader = intOnly.match(first).hasMatch() && second.toLower().contains("kommentar");
+        f.seek(0);
+    }
+
     QTextStream in(&f);
     QVector<QVector<double>> rows;
     rows.reserve(2048);
     int maxCols = 0;
+    int meaningful = 0;
     while (!in.atEnd()) {
         QString line = in.readLine().trimmed();
         if (line.isEmpty()) continue;
         if (line.startsWith('#')) continue;
+        meaningful++;
+        if (skipKommentarHeader && meaningful <= 2) continue;
         const QVector<double> nums = extractNumbersFromLine(line);
         if (nums.isEmpty()) continue;
         maxCols = std::max(maxCols, static_cast<int>(nums.size()));
@@ -727,7 +870,7 @@ void MainWindow::loadResultsFile(const QString& filePath) {
     }
 
     if (rows.isEmpty() || maxCols <= 0) {
-        resultsInfo_->setText("No numeric data found in: " + QFileInfo(filePath).fileName());
+        resultsInfo_->setText("No numeric data found in: " + name);
         return;
     }
 
@@ -753,8 +896,6 @@ void MainWindow::loadResultsFile(const QString& filePath) {
         }
     }
 
-    const QString name = QFileInfo(filePath).fileName();
-    const QString base = name.toLower();
     auto colLabel = [&](int c) -> QString {
         if (maxCols <= 1) return "value";
         if (base.contains("energy")) {
@@ -762,11 +903,20 @@ void MainWindow::loadResultsFile(const QString& filePath) {
             if (c == 1) return "energy";
             if (c == 2) return "density";
         }
-        if (base.contains("phimax")) {
+        if (base == "phimax.txt") {
             if (c == 0) return "step";
             if (c == 1) return "phic";
             if (c == 2) return "phimax";
             if (c == 3) return "myid";
+        }
+        if (isPhimaxSnapshot) {
+            if (c == 0) return "x";
+            if (c == 1) return "y";
+            if (c == 2) return "z";
+            if (c == 3) return "phimax";
+            if (c == 4) return "con";
+            if (c == 5) return "q4";
+            if (c == 6) return "q6";
         }
         if (base.contains("checkpoint")) {
             if (c == 0) return "step";
@@ -774,6 +924,25 @@ void MainWindow::loadResultsFile(const QString& filePath) {
         }
         return QString("col%1").arg(c);
     };
+
+    if (isPhimaxSnapshot) {
+        if (resultsImageValue_) {
+            resultsImageValue_->clear();
+            if (maxCols >= 4) resultsImageValue_->addItem("phimax (col3)", 3);
+            if (maxCols >= 5) resultsImageValue_->addItem("con (col4)", 4);
+            if (maxCols >= 6) resultsImageValue_->addItem("q4 (col5)", 5);
+            if (maxCols >= 7) resultsImageValue_->addItem("q6 (col6)", 6);
+            resultsImageValue_->setEnabled(resultsImageValue_->count() > 0);
+        }
+        if (resultsImagePointSize_) {
+            resultsImagePointSize_->setEnabled(true);
+        }
+        resultsImageEnabled_ = resultsImageValue_ && (resultsImageValue_->count() > 0);
+        resultsInfo_->setText(QString("%1 • %2 row(s) • %3 col(s) • use Image tab").arg(name).arg(rows.size()).arg(maxCols));
+        if (resultsViewTabs_ && resultsImagePage_) resultsViewTabs_->setCurrentWidget(resultsImagePage_);
+        renderResultsImage();
+        return;
+    }
 
     resultsYColumn_->clear();
     if (maxCols <= 1) {
@@ -826,6 +995,160 @@ void MainWindow::applyResultsYColumn(int columnIndex) {
     }
 
     resultsPlot_->setData(std::move(xs), std::move(ys), yLabel);
+}
+
+static QColor rampColor(double t) {
+    t = std::clamp(t, 0.0, 1.0);
+    return QColor::fromHsvF((1.0 - t) * 0.66, 0.95, 0.95);
+}
+
+void MainWindow::renderResultsImage() {
+    if (!resultsImageEnabled_ || !resultsImageItem_ || !resultsImageScene_ || !resultsImageView_ || !resultsImageInfo_) {
+        return;
+    }
+    if (!resultsImageValue_ || !resultsImagePointSize_) {
+        resultsImageInfo_->setText("Image controls are not available.");
+        return;
+    }
+    if (resultsImageValue_->count() <= 0) {
+        resultsImageInfo_->setText("No value columns available for this file.");
+        return;
+    }
+    if (resultsColumns_.size() < 3 || resultsColumns_.at(0).isEmpty()) {
+        resultsImageInfo_->setText("No point data loaded.");
+        return;
+    }
+
+    const int n = resultsColumns_.at(0).size();
+    const int xCol = 0;
+    const int yCol = 1;
+    const int valueCol = resultsImageValue_->currentData().toInt();
+    if (valueCol < 0 || valueCol >= resultsColumns_.size()) {
+        resultsImageInfo_->setText("Invalid value column.");
+        return;
+    }
+
+    double minX = std::numeric_limits<double>::infinity();
+    double maxX = -std::numeric_limits<double>::infinity();
+    double minY = std::numeric_limits<double>::infinity();
+    double maxY = -std::numeric_limits<double>::infinity();
+    double minV = std::numeric_limits<double>::infinity();
+    double maxV = -std::numeric_limits<double>::infinity();
+    int count = 0;
+
+    for (int i = 0; i < n; ++i) {
+        const double x = resultsColumns_.at(xCol).at(i);
+        const double y = resultsColumns_.at(yCol).at(i);
+        const double v = resultsColumns_.at(valueCol).at(i);
+        if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(v)) continue;
+        minX = std::min(minX, x);
+        maxX = std::max(maxX, x);
+        minY = std::min(minY, y);
+        maxY = std::max(maxY, y);
+        minV = std::min(minV, v);
+        maxV = std::max(maxV, v);
+        count++;
+    }
+
+    if (count <= 0 || !std::isfinite(minX) || !std::isfinite(maxX) || !std::isfinite(minY) || !std::isfinite(maxY)) {
+        resultsImageInfo_->setText("No finite point data found.");
+        resultsImageItem_->setPixmap(QPixmap());
+        return;
+    }
+
+    const double rangeX = std::max(1e-12, maxX - minX);
+    const double rangeY = std::max(1e-12, maxY - minY);
+    const int longSide = 1024;
+    int width = longSide;
+    int height = longSide;
+    if (rangeX >= rangeY) {
+        height = std::max(1, static_cast<int>(std::lround(static_cast<double>(longSide) * (rangeY / rangeX))));
+    } else {
+        width = std::max(1, static_cast<int>(std::lround(static_cast<double>(longSide) * (rangeX / rangeY))));
+    }
+
+    QImage img(width, height, QImage::Format_ARGB32_Premultiplied);
+    img.fill(QColor(20, 20, 24));
+
+    const double invRangeV = (std::isfinite(minV) && std::isfinite(maxV) && (maxV - minV) > 1e-12)
+                                 ? (1.0 / (maxV - minV))
+                                 : 0.0;
+    const double sx = (width - 1) / rangeX;
+    const double sy = (height - 1) / rangeY;
+    const int dot = std::clamp(resultsImagePointSize_->value(), 1, 64);
+
+    if (dot <= 1) {
+        for (int i = 0; i < n; ++i) {
+            const double x = resultsColumns_.at(xCol).at(i);
+            const double y = resultsColumns_.at(yCol).at(i);
+            const double v = resultsColumns_.at(valueCol).at(i);
+            if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(v)) continue;
+            const int px = std::clamp(static_cast<int>(std::lround((x - minX) * sx)), 0, width - 1);
+            const int py = std::clamp(static_cast<int>(std::lround((maxY - y) * sy)), 0, height - 1);
+            const double t = invRangeV > 0.0 ? ((v - minV) * invRangeV) : 0.5;
+            img.setPixelColor(px, py, rampColor(t));
+        }
+    } else {
+        QPainter p(&img);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setPen(Qt::NoPen);
+        const double r = static_cast<double>(dot) * 0.5;
+        for (int i = 0; i < n; ++i) {
+            const double x = resultsColumns_.at(xCol).at(i);
+            const double y = resultsColumns_.at(yCol).at(i);
+            const double v = resultsColumns_.at(valueCol).at(i);
+            if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(v)) continue;
+            const double t = invRangeV > 0.0 ? ((v - minV) * invRangeV) : 0.5;
+            p.setBrush(rampColor(t));
+            const double px = (x - minX) * sx;
+            const double py = (maxY - y) * sy;
+            p.drawEllipse(QPointF(px, py), r, r);
+        }
+    }
+
+    resultsImageItem_->setPixmap(QPixmap::fromImage(img));
+    resultsImageScene_->setSceneRect(QRectF(QPointF(0, 0), QSizeF(width, height)));
+
+    const QString valueLabel = resultsImageValue_->currentText();
+    resultsImageInfo_->setText(
+        QString("%1 • points=%2 • x=[%3, %4] y=[%5, %6] • %7=[%8, %9] • Ctrl+wheel zoom")
+            .arg(QFileInfo(resultsCurrentFile_).fileName())
+            .arg(count)
+            .arg(minX, 0, 'g', 10)
+            .arg(maxX, 0, 'g', 10)
+            .arg(minY, 0, 'g', 10)
+            .arg(maxY, 0, 'g', 10)
+            .arg(valueLabel)
+            .arg(minV, 0, 'g', 10)
+            .arg(maxV, 0, 'g', 10));
+
+    fitResultsImage();
+}
+
+void MainWindow::fitResultsImage() {
+    if (!resultsImageView_ || !resultsImageItem_) return;
+    if (resultsImageItem_->pixmap().isNull()) return;
+    resultsImageView_->resetTransform();
+    resultsImageView_->fitInView(resultsImageItem_, Qt::KeepAspectRatio);
+}
+
+void MainWindow::exportResultsImage() {
+    if (!resultsImageItem_ || resultsImageItem_->pixmap().isNull()) {
+        QMessageBox::information(this, "Export image", "No image to export. Select a Phimax_*.txt file first.");
+        return;
+    }
+
+    const QString baseDir = resultsDir_ ? resultsDir_->text().trimmed() : QString();
+    const QString suggestDir = baseDir.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::PicturesLocation) : baseDir;
+    const QString baseName = QFileInfo(resultsCurrentFile_).completeBaseName();
+    const QString suggested = QDir(suggestDir).filePath(baseName + ".png");
+
+    const QString fileName = QFileDialog::getSaveFileName(this, "Export PNG", suggested, "PNG Image (*.png)");
+    if (fileName.isEmpty()) return;
+
+    if (!resultsImageItem_->pixmap().toImage().save(fileName)) {
+        QMessageBox::warning(this, "Export image", "Failed to save: " + fileName);
+    }
 }
 
 RunParams MainWindow::singleParams() const {
