@@ -81,6 +81,6 @@ cmake --build build
 
 ## GitHub Actions（自动构建与发布）
 
-仓库内提供工作流：在 push tag（例如 `v0.1.0`）时自动构建 Windows/macOS/Linux 并上传 release 产物（可适当简化为 zip/tar.gz）。
+仓库内提供工作流：在 push tag（例如 `0.1.10`，也兼容 `v0.1.10`）时自动构建 Windows/macOS/Linux 并上传 release 产物（可适当简化为 zip/tar.gz）。
 
 更多实验程序原理说明见 `docs/misfit_uniform_time_seed_fftw_early_overview.md`。
