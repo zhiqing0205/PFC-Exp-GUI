@@ -9,6 +9,8 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QFrame>
+#include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QJsonDocument>
@@ -19,6 +21,8 @@
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QSplitter>
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QStyle>
@@ -52,10 +56,23 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resize(1100, 780);
 
     auto* tabs = new QTabWidget;
+    tabs->setDocumentMode(true);
+
     auto* singleTab = new QWidget;
     auto* batchTab = new QWidget;
-    tabs->addTab(singleTab, "Single Run");
-    tabs->addTab(batchTab, "Batch Sweep");
+
+    auto* singleScroll = new QScrollArea;
+    singleScroll->setFrameShape(QFrame::NoFrame);
+    singleScroll->setWidgetResizable(true);
+    singleScroll->setWidget(singleTab);
+
+    auto* batchScroll = new QScrollArea;
+    batchScroll->setFrameShape(QFrame::NoFrame);
+    batchScroll->setWidgetResizable(true);
+    batchScroll->setWidget(batchTab);
+
+    tabs->addTab(singleScroll, "Single Run");
+    tabs->addTab(batchScroll, "Batch Sweep");
 
     log_ = new QPlainTextEdit;
     log_->setReadOnly(true);
@@ -80,8 +97,15 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* centralLayout = new QVBoxLayout;
     centralLayout->setContentsMargins(14, 14, 14, 14);
     centralLayout->setSpacing(12);
-    centralLayout->addWidget(tabs);
-    centralLayout->addWidget(logBox, 1);
+    auto* splitter = new QSplitter(Qt::Vertical);
+    splitter->setHandleWidth(6);
+    splitter->addWidget(tabs);
+    splitter->addWidget(logBox);
+    splitter->setStretchFactor(0, 3);
+    splitter->setStretchFactor(1, 1);
+    splitter->setSizes(QList<int>() << 560 << 220);
+
+    centralLayout->addWidget(splitter, 1);
     central->setLayout(centralLayout);
     setCentralWidget(central);
 
@@ -91,9 +115,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     singleTab->setLayout(singleLayout);
 
     auto* singleParamsBox = new QGroupBox("Parameters");
-    auto* singleParamsForm = new QFormLayout;
-    singleParamsForm->setVerticalSpacing(8);
-    singleParamsForm->setHorizontalSpacing(12);
+    auto* singleParamsGrid = new QGridLayout;
+    singleParamsGrid->setVerticalSpacing(8);
+    singleParamsGrid->setHorizontalSpacing(12);
+    singleParamsGrid->setColumnStretch(1, 1);
+    singleParamsGrid->setColumnStretch(3, 1);
 
     singleU0_ = makeDoubleSpin(-2.0, 2.0, 0.05, 6, 0.01);
     singleCon0_ = makeDoubleSpin(0.0, 1.0, 0.2, 6, 0.01);
@@ -108,19 +134,27 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     singleGrainZ_ = makeIntSpin(1, 4096, 1, 1);
     singleAxx_ = makeDoubleSpin(0.0, 1000.0, 0.0, 6, 0.1);
 
-    singleParamsForm->addRow("u0 (density mean)", singleU0_);
-    singleParamsForm->addRow("con0 (concentration mean)", singleCon0_);
-    singleParamsForm->addRow("sig", singleSig_);
-    singleParamsForm->addRow("dt", singleDt_);
-    singleParamsForm->addRow("dx", singleDx_);
-    singleParamsForm->addRow("steps", singleSteps_);
-    singleParamsForm->addRow("mod (checkpoint interval)", singleMod_);
-    singleParamsForm->addRow("seed (rng)", singleSeed_);
-    singleParamsForm->addRow("grainx", singleGrainX_);
-    singleParamsForm->addRow("grainy", singleGrainY_);
-    singleParamsForm->addRow("grainz", singleGrainZ_);
-    singleParamsForm->addRow("axx (noise intensity)", singleAxx_);
-    singleParamsBox->setLayout(singleParamsForm);
+    auto addSingleParam = [&](int row, int colPair, const QString& labelText, QWidget* editor) {
+        auto* label = new QLabel(labelText);
+        label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        singleParamsGrid->addWidget(label, row, colPair * 2);
+        singleParamsGrid->addWidget(editor, row, colPair * 2 + 1);
+    };
+
+    addSingleParam(0, 0, "u0 (density)", singleU0_);
+    addSingleParam(0, 1, "con0 (concentration)", singleCon0_);
+    addSingleParam(1, 0, "sig", singleSig_);
+    addSingleParam(1, 1, "seed", singleSeed_);
+    addSingleParam(2, 0, "dt", singleDt_);
+    addSingleParam(2, 1, "dx", singleDx_);
+    addSingleParam(3, 0, "steps", singleSteps_);
+    addSingleParam(3, 1, "mod", singleMod_);
+    addSingleParam(4, 0, "grainx", singleGrainX_);
+    addSingleParam(4, 1, "grainy", singleGrainY_);
+    addSingleParam(5, 0, "grainz", singleGrainZ_);
+    addSingleParam(5, 1, "axx (noise)", singleAxx_);
+
+    singleParamsBox->setLayout(singleParamsGrid);
 
     auto* singleOutBox = new QGroupBox("Output");
     auto* singleOutForm = new QFormLayout;
@@ -175,10 +209,81 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     batchLayout->setSpacing(12);
     batchTab->setLayout(batchLayout);
 
+    auto* batchHint = new QLabel(
+        "Batch Sweep: enable Sweep for u0 / con0 / steps, then fill Start/End/Step.\n"
+        "Disabled fields are ignored.");
+    batchHint->setProperty("hint", true);
+    batchHint->setWordWrap(true);
+
+    auto* batchSweepBox = new QGroupBox("Sweep (Cartesian product)");
+    auto* sweepGrid = new QGridLayout;
+    sweepGrid->setVerticalSpacing(8);
+    sweepGrid->setHorizontalSpacing(10);
+    sweepGrid->setColumnStretch(2, 1);
+    sweepGrid->setColumnStretch(3, 1);
+    sweepGrid->setColumnStretch(4, 1);
+    sweepGrid->setColumnStretch(5, 1);
+
+    auto header = [](const QString& text) {
+        auto* l = new QLabel(text);
+        QFont f = l->font();
+        f.setBold(true);
+        l->setFont(f);
+        l->setAlignment(Qt::AlignCenter);
+        return l;
+    };
+
+    sweepGrid->addWidget(header("Param"), 0, 0);
+    sweepGrid->addWidget(header("Sweep"), 0, 1);
+    sweepGrid->addWidget(header("Single"), 0, 2);
+    sweepGrid->addWidget(header("Start"), 0, 3);
+    sweepGrid->addWidget(header("End"), 0, 4);
+    sweepGrid->addWidget(header("Step"), 0, 5);
+
+    sweepU0Enable_ = new QCheckBox;
+    sweepU0Enable_->setToolTip("Enable sweep for u0");
+    sweepU0Single_ = makeDoubleSpin(-2.0, 2.0, 0.05, 6, 0.01);
+    sweepU0Start_ = makeDoubleSpin(-2.0, 2.0, 0.0, 6, 0.01);
+    sweepU0End_ = makeDoubleSpin(-2.0, 2.0, 0.2, 6, 0.01);
+    sweepU0Step_ = makeDoubleSpin(1e-9, 10.0, 0.05, 6, 0.01);
+
+    sweepCon0Enable_ = new QCheckBox;
+    sweepCon0Enable_->setToolTip("Enable sweep for con0");
+    sweepCon0Single_ = makeDoubleSpin(0.0, 1.0, 0.2, 6, 0.01);
+    sweepCon0Start_ = makeDoubleSpin(0.0, 1.0, 0.1, 6, 0.01);
+    sweepCon0End_ = makeDoubleSpin(0.0, 1.0, 0.3, 6, 0.01);
+    sweepCon0Step_ = makeDoubleSpin(1e-9, 1.0, 0.05, 6, 0.01);
+
+    sweepStepsEnable_ = new QCheckBox;
+    sweepStepsEnable_->setToolTip("Enable sweep for steps");
+    sweepStepsSingle_ = makeIntSpin(1, 100000000, 200, 10);
+    sweepStepsStart_ = makeIntSpin(1, 100000000, 100, 10);
+    sweepStepsEnd_ = makeIntSpin(1, 100000000, 300, 10);
+    sweepStepsStep_ = makeIntSpin(1, 100000000, 100, 10);
+
+    auto addSweepRow = [&](int row, const QString& name, QCheckBox* enable, QWidget* single, QWidget* start, QWidget* end, QWidget* step) {
+        auto* label = new QLabel(name);
+        label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        sweepGrid->addWidget(label, row, 0);
+        sweepGrid->addWidget(enable, row, 1, Qt::AlignCenter);
+        sweepGrid->addWidget(single, row, 2);
+        sweepGrid->addWidget(start, row, 3);
+        sweepGrid->addWidget(end, row, 4);
+        sweepGrid->addWidget(step, row, 5);
+    };
+
+    addSweepRow(1, "u0", sweepU0Enable_, sweepU0Single_, sweepU0Start_, sweepU0End_, sweepU0Step_);
+    addSweepRow(2, "con0", sweepCon0Enable_, sweepCon0Single_, sweepCon0Start_, sweepCon0End_, sweepCon0Step_);
+    addSweepRow(3, "steps", sweepStepsEnable_, sweepStepsSingle_, sweepStepsStart_, sweepStepsEnd_, sweepStepsStep_);
+
+    batchSweepBox->setLayout(sweepGrid);
+
     auto* batchFixedBox = new QGroupBox("Fixed Parameters");
-    auto* batchFixedForm = new QFormLayout;
-    batchFixedForm->setVerticalSpacing(8);
-    batchFixedForm->setHorizontalSpacing(12);
+    auto* batchFixedGrid = new QGridLayout;
+    batchFixedGrid->setVerticalSpacing(8);
+    batchFixedGrid->setHorizontalSpacing(12);
+    batchFixedGrid->setColumnStretch(1, 1);
+    batchFixedGrid->setColumnStretch(3, 1);
     batchSig_ = makeDoubleSpin(0.0, 2.0, 0.05, 6, 0.01);
     batchDt_ = makeDoubleSpin(1e-6, 1.0, 0.05, 6, 0.01);
     batchDx_ = makeDoubleSpin(1e-6, 10.0, 0.125, 6, 0.01);
@@ -189,86 +294,59 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     batchGrainZ_ = makeIntSpin(1, 4096, 1, 1);
     batchAxx_ = makeDoubleSpin(0.0, 1000.0, 0.0, 6, 0.1);
 
-    batchFixedForm->addRow("sig", batchSig_);
-    batchFixedForm->addRow("dt", batchDt_);
-    batchFixedForm->addRow("dx", batchDx_);
-    batchFixedForm->addRow("mod (checkpoint interval)", batchMod_);
-    batchFixedForm->addRow("seed (rng)", batchSeed_);
-    batchFixedForm->addRow("grainx", batchGrainX_);
-    batchFixedForm->addRow("grainy", batchGrainY_);
-    batchFixedForm->addRow("grainz", batchGrainZ_);
-    batchFixedForm->addRow("axx (noise intensity)", batchAxx_);
-    batchFixedBox->setLayout(batchFixedForm);
+    auto addBatchFixed = [&](int row, int colPair, const QString& labelText, QWidget* editor) {
+        auto* label = new QLabel(labelText);
+        label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        batchFixedGrid->addWidget(label, row, colPair * 2);
+        batchFixedGrid->addWidget(editor, row, colPair * 2 + 1);
+    };
 
-    auto* batchSweepBox = new QGroupBox("Sweep Parameters (Cartesian product)");
-    auto* sweepForm = new QFormLayout;
-    sweepForm->setVerticalSpacing(8);
-    sweepForm->setHorizontalSpacing(12);
+    addBatchFixed(0, 0, "sig", batchSig_);
+    addBatchFixed(0, 1, "seed", batchSeed_);
+    addBatchFixed(1, 0, "dt", batchDt_);
+    addBatchFixed(1, 1, "dx", batchDx_);
+    addBatchFixed(2, 0, "mod", batchMod_);
+    addBatchFixed(2, 1, "axx (noise)", batchAxx_);
+    addBatchFixed(3, 0, "grainx", batchGrainX_);
+    addBatchFixed(3, 1, "grainy", batchGrainY_);
+    addBatchFixed(4, 0, "grainz", batchGrainZ_);
 
-    auto* u0Row = new QWidget;
-    auto* u0RowLayout = new QHBoxLayout;
-    u0RowLayout->setContentsMargins(0, 0, 0, 0);
-    sweepU0Enable_ = new QCheckBox("Sweep");
-    sweepU0Single_ = makeDoubleSpin(-2.0, 2.0, 0.05, 6, 0.01);
-    sweepU0Start_ = makeDoubleSpin(-2.0, 2.0, 0.0, 6, 0.01);
-    sweepU0End_ = makeDoubleSpin(-2.0, 2.0, 0.2, 6, 0.01);
-    sweepU0Step_ = makeDoubleSpin(1e-9, 10.0, 0.05, 6, 0.01);
-    u0RowLayout->addWidget(sweepU0Enable_);
-    u0RowLayout->addWidget(new QLabel("Single"));
-    u0RowLayout->addWidget(sweepU0Single_);
-    u0RowLayout->addSpacing(10);
-    u0RowLayout->addWidget(new QLabel("Start"));
-    u0RowLayout->addWidget(sweepU0Start_);
-    u0RowLayout->addWidget(new QLabel("End"));
-    u0RowLayout->addWidget(sweepU0End_);
-    u0RowLayout->addWidget(new QLabel("Step"));
-    u0RowLayout->addWidget(sweepU0Step_);
-    u0Row->setLayout(u0RowLayout);
-    sweepForm->addRow("u0", u0Row);
+    batchFixedBox->setLayout(batchFixedGrid);
 
-    auto* con0Row = new QWidget;
-    auto* con0RowLayout = new QHBoxLayout;
-    con0RowLayout->setContentsMargins(0, 0, 0, 0);
-    sweepCon0Enable_ = new QCheckBox("Sweep");
-    sweepCon0Single_ = makeDoubleSpin(0.0, 1.0, 0.2, 6, 0.01);
-    sweepCon0Start_ = makeDoubleSpin(0.0, 1.0, 0.1, 6, 0.01);
-    sweepCon0End_ = makeDoubleSpin(0.0, 1.0, 0.3, 6, 0.01);
-    sweepCon0Step_ = makeDoubleSpin(1e-9, 1.0, 0.05, 6, 0.01);
-    con0RowLayout->addWidget(sweepCon0Enable_);
-    con0RowLayout->addWidget(new QLabel("Single"));
-    con0RowLayout->addWidget(sweepCon0Single_);
-    con0RowLayout->addSpacing(10);
-    con0RowLayout->addWidget(new QLabel("Start"));
-    con0RowLayout->addWidget(sweepCon0Start_);
-    con0RowLayout->addWidget(new QLabel("End"));
-    con0RowLayout->addWidget(sweepCon0End_);
-    con0RowLayout->addWidget(new QLabel("Step"));
-    con0RowLayout->addWidget(sweepCon0Step_);
-    con0Row->setLayout(con0RowLayout);
-    sweepForm->addRow("con0", con0Row);
+    auto updateSweepEnabled = [this]() {
+        const bool u0On = sweepU0Enable_->isChecked();
+        sweepU0Single_->setEnabled(!u0On);
+        sweepU0Start_->setEnabled(u0On);
+        sweepU0End_->setEnabled(u0On);
+        sweepU0Step_->setEnabled(u0On);
 
-    auto* stepsRow = new QWidget;
-    auto* stepsRowLayout = new QHBoxLayout;
-    stepsRowLayout->setContentsMargins(0, 0, 0, 0);
-    sweepStepsEnable_ = new QCheckBox("Sweep");
-    sweepStepsSingle_ = makeIntSpin(1, 100000000, 200, 10);
-    sweepStepsStart_ = makeIntSpin(1, 100000000, 100, 10);
-    sweepStepsEnd_ = makeIntSpin(1, 100000000, 300, 10);
-    sweepStepsStep_ = makeIntSpin(1, 100000000, 100, 10);
-    stepsRowLayout->addWidget(sweepStepsEnable_);
-    stepsRowLayout->addWidget(new QLabel("Single"));
-    stepsRowLayout->addWidget(sweepStepsSingle_);
-    stepsRowLayout->addSpacing(10);
-    stepsRowLayout->addWidget(new QLabel("Start"));
-    stepsRowLayout->addWidget(sweepStepsStart_);
-    stepsRowLayout->addWidget(new QLabel("End"));
-    stepsRowLayout->addWidget(sweepStepsEnd_);
-    stepsRowLayout->addWidget(new QLabel("Step"));
-    stepsRowLayout->addWidget(sweepStepsStep_);
-    stepsRow->setLayout(stepsRowLayout);
-    sweepForm->addRow("steps", stepsRow);
+        const bool con0On = sweepCon0Enable_->isChecked();
+        sweepCon0Single_->setEnabled(!con0On);
+        sweepCon0Start_->setEnabled(con0On);
+        sweepCon0End_->setEnabled(con0On);
+        sweepCon0Step_->setEnabled(con0On);
 
-    batchSweepBox->setLayout(sweepForm);
+        const bool stepsOn = sweepStepsEnable_->isChecked();
+        sweepStepsSingle_->setEnabled(!stepsOn);
+        sweepStepsStart_->setEnabled(stepsOn);
+        sweepStepsEnd_->setEnabled(stepsOn);
+        sweepStepsStep_->setEnabled(stepsOn);
+    };
+
+    connect(sweepU0Enable_, &QCheckBox::toggled, this, [=](bool) {
+        updateSweepEnabled();
+        updateBatchPreview();
+    });
+    connect(sweepCon0Enable_, &QCheckBox::toggled, this, [=](bool) {
+        updateSweepEnabled();
+        updateBatchPreview();
+    });
+    connect(sweepStepsEnable_, &QCheckBox::toggled, this, [=](bool) {
+        updateSweepEnabled();
+        updateBatchPreview();
+    });
+
+    updateSweepEnabled();
 
     auto* batchOutBox = new QGroupBox("Output");
     auto* batchOutForm = new QFormLayout;
@@ -319,10 +397,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     batchButtonsLayout->addWidget(openOut2);
     batchButtons->setLayout(batchButtonsLayout);
 
-    batchLayout->addWidget(batchFixedBox);
+    batchLayout->addWidget(batchHint);
     batchLayout->addWidget(batchSweepBox);
-    batchLayout->addWidget(batchOutBox);
     batchLayout->addWidget(batchPreview_);
+    batchLayout->addWidget(batchFixedBox);
+    batchLayout->addWidget(batchOutBox);
     batchLayout->addWidget(batchProgress_);
     batchLayout->addWidget(batchButtons);
     batchLayout->addStretch(1);
@@ -339,17 +418,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         }
     };
 
-    connectValueChanged(sweepU0Enable_);
     connectValueChanged(sweepU0Single_);
     connectValueChanged(sweepU0Start_);
     connectValueChanged(sweepU0End_);
     connectValueChanged(sweepU0Step_);
-    connectValueChanged(sweepCon0Enable_);
     connectValueChanged(sweepCon0Single_);
     connectValueChanged(sweepCon0Start_);
     connectValueChanged(sweepCon0End_);
     connectValueChanged(sweepCon0Step_);
-    connectValueChanged(sweepStepsEnable_);
     connectValueChanged(sweepStepsSingle_);
     connectValueChanged(sweepStepsStart_);
     connectValueChanged(sweepStepsEnd_);

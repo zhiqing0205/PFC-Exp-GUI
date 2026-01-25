@@ -95,6 +95,79 @@ QLabel[hint="true"] {
   color: #CFCFCF;
 }
 
+QScrollArea {
+  background: transparent;
+}
+
+QSplitter::handle {
+  background: #1A1A1A;
+}
+QSplitter::handle:hover {
+  background: #242424;
+}
+
+QScrollBar:vertical {
+  background: transparent;
+  width: 10px;
+  margin: 0px;
+}
+QScrollBar::handle:vertical {
+  background: #2A2A2A;
+  border-radius: 5px;
+  min-height: 30px;
+}
+QScrollBar::handle:vertical:hover {
+  background: #3A3A3A;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+  height: 0px;
+}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+  background: transparent;
+}
+
+QScrollBar:horizontal {
+  background: transparent;
+  height: 10px;
+  margin: 0px;
+}
+QScrollBar::handle:horizontal {
+  background: #2A2A2A;
+  border-radius: 5px;
+  min-width: 30px;
+}
+QScrollBar::handle:horizontal:hover {
+  background: #3A3A3A;
+}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+  width: 0px;
+}
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+  background: transparent;
+}
+
+QCheckBox {
+  spacing: 8px;
+}
+QCheckBox::indicator {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: #101010;
+  border: 1px solid #2E2E2E;
+}
+QCheckBox::indicator:hover {
+  border: 1px solid #4080FF;
+}
+QCheckBox::indicator:checked {
+  background: #4080FF;
+  border: 1px solid #4080FF;
+}
+QCheckBox::indicator:checked:hover {
+  background: #5B93FF;
+  border: 1px solid #5B93FF;
+}
+
 QLineEdit, QSpinBox, QDoubleSpinBox {
   background: #101010;
   border: 1px solid #2E2E2E;
