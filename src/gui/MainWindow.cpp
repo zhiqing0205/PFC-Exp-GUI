@@ -575,7 +575,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resultsImageValue_->setEnabled(false);
     imageTopLayout->addWidget(resultsImageValue_);
     imageTopLayout->addWidget(new QLabel("Dot size"));
-    resultsImagePointSize_ = makeIntSpin(1, 16, 2, 1);
+    resultsImagePointSize_ = makeIntSpin(1, 16, 3, 1);
     resultsImagePointSize_->setEnabled(false);
     imageTopLayout->addWidget(resultsImagePointSize_);
     imageTopLayout->addStretch(1);
@@ -601,7 +601,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resultsImageView_ = new ZoomableGraphicsView;
     resultsImageView_->setScene(resultsImageScene_);
     resultsImageView_->setFrameShape(QFrame::NoFrame);
-    resultsImageView_->setBackgroundBrush(QColor(20, 20, 24));
+    resultsImageView_->setBackgroundBrush(QColor(248, 248, 250));
     resultsImageView_->setRenderHint(QPainter::Antialiasing, true);
     resultsImageView_->setDragMode(QGraphicsView::ScrollHandDrag);
     resultsImageView_->setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
@@ -1080,9 +1080,18 @@ void MainWindow::applyResultsYColumn(int columnIndex) {
     resultsPlot_->setData(std::move(xs), std::move(ys), yLabel);
 }
 
-static QColor rampColor(double t) {
+static QColor jetLikeColor(double t) {
     t = std::clamp(t, 0.0, 1.0);
-    return QColor::fromHsvF((1.0 - t) * 0.66, 0.95, 0.95);
+    // A compact "jet-like" ramp that matches common phase-field screenshots:
+    // deep blue -> cyan/green -> yellow -> bright red.
+    const double u = t * 0.875;  // keep the red endpoint bright
+    auto ch = [](double x) {
+        return std::clamp(1.5 - std::abs(x), 0.0, 1.0);
+    };
+    const double r = ch(4.0 * u - 3.0);
+    const double g = ch(4.0 * u - 2.0);
+    const double b = ch(4.0 * u - 1.0);
+    return QColor::fromRgbF(r, g, b);
 }
 
 void MainWindow::renderResultsImage() {
@@ -1151,7 +1160,7 @@ void MainWindow::renderResultsImage() {
     }
 
     QImage img(width, height, QImage::Format_ARGB32_Premultiplied);
-    img.fill(QColor(20, 20, 24));
+    img.fill(jetLikeColor(0.0));
 
     const double invRangeV = (std::isfinite(minV) && std::isfinite(maxV) && (maxV - minV) > 1e-12)
                                  ? (1.0 / (maxV - minV))
@@ -1169,7 +1178,7 @@ void MainWindow::renderResultsImage() {
             const int px = std::clamp(static_cast<int>(std::lround((x - minX) * sx)), 0, width - 1);
             const int py = std::clamp(static_cast<int>(std::lround((maxY - y) * sy)), 0, height - 1);
             const double t = invRangeV > 0.0 ? ((v - minV) * invRangeV) : 0.5;
-            img.setPixelColor(px, py, rampColor(t));
+            img.setPixelColor(px, py, jetLikeColor(t));
         }
     } else {
         QPainter p(&img);
@@ -1182,7 +1191,7 @@ void MainWindow::renderResultsImage() {
             const double v = resultsColumns_.at(valueCol).at(i);
             if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(v)) continue;
             const double t = invRangeV > 0.0 ? ((v - minV) * invRangeV) : 0.5;
-            p.setBrush(rampColor(t));
+            p.setBrush(jetLikeColor(t));
             const double px = (x - minX) * sx;
             const double py = (maxY - y) * sy;
             p.drawEllipse(QPointF(px, py), r, r);

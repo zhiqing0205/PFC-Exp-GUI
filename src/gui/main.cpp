@@ -168,10 +168,12 @@ QCheckBox::indicator:hover {
 QCheckBox::indicator:checked {
   background: #4080FF;
   border: 1px solid #4080FF;
+  image: url(:/icons/check.svg);
 }
 QCheckBox::indicator:checked:hover {
   background: #5B93FF;
   border: 1px solid #5B93FF;
+  image: url(:/icons/check.svg);
 }
 
 QLineEdit, QSpinBox, QDoubleSpinBox {

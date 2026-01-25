@@ -22,6 +22,7 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 find_package(FFTW3 REQUIRED)
@@ -46,6 +47,7 @@ add_executable(pfc_exp_gui WIN32 MACOSX_BUNDLE
   src/gui/MainWindow.h
   src/gui/PlotWidget.cpp
   src/gui/PlotWidget.h
+  src/gui/resources.qrc
 )
 target_link_libraries(pfc_exp_gui PRIVATE Qt6::Widgets)
 set_target_properties(pfc_exp_gui PROPERTIES OUTPUT_NAME "PFC-Exp-GUI")
