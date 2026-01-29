@@ -645,6 +645,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     resultsViewTabs_ = new QTabWidget;
     resultsViewTabs_->setDocumentMode(true);
+    if (resultsViewTabs_->tabBar()) resultsViewTabs_->tabBar()->setDrawBase(false);
+    resultsViewTabs_->setStyleSheet("QTabWidget::pane { border: 0px; }");
 
     auto* tablePage = new QWidget;
     auto* tableLayout = new QVBoxLayout;
@@ -981,6 +983,10 @@ void MainWindow::loadResultsFile(const QString& filePath) {
     resultsTable_->clear();
     resultsTable_->setRowCount(0);
     resultsTable_->setColumnCount(0);
+    if (auto* header = resultsTable_->horizontalHeader()) {
+        header->setSectionResizeMode(QHeaderView::Interactive);
+        header->setStretchLastSection(true);
+    }
     if (resultsPlotPage_) {
         const int plotTab = resultsViewTabs_->indexOf(resultsPlotPage_);
         if (plotTab >= 0) {
@@ -1044,6 +1050,10 @@ void MainWindow::loadResultsFile(const QString& filePath) {
         resultsTable_->setRowCount(rows.size());
         resultsTable_->setColumnCount(2);
         resultsTable_->setHorizontalHeaderLabels(QStringList() << "key" << "value");
+        if (auto* header = resultsTable_->horizontalHeader()) {
+            header->setStretchLastSection(false);
+            header->setSectionResizeMode(QHeaderView::ResizeToContents);
+        }
         for (int r = 0; r < rows.size(); ++r) {
             auto* keyItem = new QTableWidgetItem(rows[r].key);
             auto* valItem = new QTableWidgetItem(rows[r].value);
@@ -1104,6 +1114,10 @@ void MainWindow::loadResultsFile(const QString& filePath) {
                           << "datetime"
                           << "elapsed_s"
                           << "delta_s");
+        if (auto* header = resultsTable_->horizontalHeader()) {
+            header->setStretchLastSection(false);
+            header->setSectionResizeMode(QHeaderView::ResizeToContents);
+        }
 
         qint64 prevTs = 0;
         for (int r = 0; r < entries.size(); ++r) {
