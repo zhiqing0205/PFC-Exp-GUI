@@ -29,10 +29,10 @@ static QIcon makeAppIcon() {
 
         QFont f = p.font();
         f.setBold(true);
-        f.setPixelSize(static_cast<int>(size * 0.42));
+        f.setPixelSize(static_cast<int>(size * 0.30));
         p.setFont(f);
         p.setPen(Qt::white);
-        p.drawText(r, Qt::AlignCenter, "PFC");
+        p.drawText(r, Qt::AlignCenter, "MID\nNano");
 
         p.end();
         icon.addPixmap(pm);
