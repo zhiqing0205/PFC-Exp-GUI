@@ -663,6 +663,8 @@ PVTKWRITE(local_n0,numprocs,0,N,Pname);
 sVTKwriteBianryc(con,local_n0,local_0_start,myid,numprocs);
 PVTKWRITEC(local_n0,numprocs,0,N,Pnamec);
 
+    const int progress_every = std::max(1, total_steps / 200);
+
 	for(int t=0;t<total_steps; t++){
 
     kd=t;
@@ -695,6 +697,9 @@ PVTKWRITEC(local_n0,numprocs,0,N,Pnamec);
 
 
             const int output_step = t + 1;
+            if (myid == 0 && (output_step == 1 || output_step % progress_every == 0 || output_step == total_steps)) {
+                cout << "PFC_PROGRESS step=" << output_step << " total=" << total_steps << endl;
+            }
             if ((output_step % mod) == 0 || output_step == total_steps) {
 // if(t==500) {sig=0.02;mod=5000;INITIAL_con(con,local_n0);}
                 kd = output_step;

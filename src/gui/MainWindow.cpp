@@ -269,9 +269,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     singleButtonsLayout->addWidget(openOut);
     singleButtons->setLayout(singleButtonsLayout);
 
+    singleStepProgress_ = new QProgressBar;
+    singleStepProgress_->setRange(0, 1);
+    singleStepProgress_->setValue(0);
+    singleStepProgress_->setFormat("Step %v / %m");
+    singleStepProgress_->setTextVisible(true);
+
     singleLayout->addWidget(singleParamsBox);
     singleLayout->addWidget(singleOutBox);
     singleLayout->addWidget(singleButtons);
+    singleLayout->addWidget(singleStepProgress_);
     singleLayout->addStretch(1);
 
     // ---------- Batch tab ----------
@@ -443,6 +450,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     batchPreview_ = new QLabel;
     batchPreview_->setProperty("hint", true);
     batchPreview_->setWordWrap(true);
+    batchStepProgress_ = new QProgressBar;
+    batchStepProgress_->setRange(0, 1);
+    batchStepProgress_->setValue(0);
+    batchStepProgress_->setFormat("Run step %v / %m");
+    batchStepProgress_->setTextVisible(true);
     batchProgress_ = new QProgressBar;
     batchProgress_->setRange(0, 100);
     batchProgress_->setValue(0);
@@ -472,6 +484,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     batchLayout->addWidget(batchPreview_);
     batchLayout->addWidget(batchFixedBox);
     batchLayout->addWidget(batchOutBox);
+    batchLayout->addWidget(batchStepProgress_);
     batchLayout->addWidget(batchProgress_);
     batchLayout->addWidget(batchButtons);
     batchLayout->addStretch(1);
@@ -1685,6 +1698,20 @@ void MainWindow::launchJob(const RunJob& job) {
     process_->setArguments(buildArgs(job.params, job.outDir));
     process_->setWorkingDirectory(job.outDir);
     process_->setProcessChannelMode(QProcess::MergedChannels);
+    processOutputBuffer_.clear();
+    currentJobMode_ = job.mode;
+    currentJobTotalSteps_ = std::max(0, job.params.steps);
+    if (job.mode == "single") {
+        if (singleStepProgress_) {
+            singleStepProgress_->setRange(0, std::max(1, job.params.steps));
+            singleStepProgress_->setValue(0);
+        }
+    } else if (job.mode == "batch") {
+        if (batchStepProgress_) {
+            batchStepProgress_->setRange(0, std::max(1, job.params.steps));
+            batchStepProgress_->setValue(0);
+        }
+    }
 
     connect(process_, &QProcess::readyRead, this, &MainWindow::onProcessReadyRead);
     connect(process_, &QProcess::finished, this, &MainWindow::onProcessFinished);
@@ -1747,6 +1774,11 @@ void MainWindow::startBatchRun() {
 void MainWindow::stopRun() {
     jobQueue_.clear();
     currentJobIndex_ = -1;
+    currentJobMode_.clear();
+    currentJobTotalSteps_ = 0;
+    if (singleStepProgress_) singleStepProgress_->setValue(0);
+    if (batchStepProgress_) batchStepProgress_->setValue(0);
+    if (batchProgress_) batchProgress_->setValue(0);
     if (!process_) return;
     appendLog("=== Stop requested ===");
     process_->kill();
@@ -1800,10 +1832,47 @@ void MainWindow::updateBatchPreview() {
 void MainWindow::onProcessReadyRead() {
     if (!process_) return;
     const QByteArray data = process_->readAll();
-    if (!data.isEmpty()) appendLog(QString::fromLocal8Bit(data));
+    if (data.isEmpty()) return;
+
+    processOutputBuffer_ += QString::fromLocal8Bit(data);
+
+    static const QRegularExpression progressRe(R"(^PFC_PROGRESS\s+step=(\d+)\s+total=(\d+)\s*$)");
+    int nl = -1;
+    while ((nl = processOutputBuffer_.indexOf('\n')) >= 0) {
+        QString line = processOutputBuffer_.left(nl);
+        processOutputBuffer_.remove(0, nl + 1);
+        if (line.endsWith('\r')) line.chop(1);
+
+        const auto m = progressRe.match(line);
+        if (m.hasMatch()) {
+            const int step = m.captured(1).toInt();
+            const int total = m.captured(2).toInt();
+
+            if (currentJobMode_ == "single" && singleStepProgress_) {
+                if (total > 0 && singleStepProgress_->maximum() != total) {
+                    singleStepProgress_->setRange(0, total);
+                }
+                singleStepProgress_->setValue(std::clamp(step, 0, singleStepProgress_->maximum()));
+            } else if (currentJobMode_ == "batch" && batchStepProgress_) {
+                if (total > 0 && batchStepProgress_->maximum() != total) {
+                    batchStepProgress_->setRange(0, total);
+                }
+                batchStepProgress_->setValue(std::clamp(step, 0, batchStepProgress_->maximum()));
+            }
+            continue;
+        }
+
+        if (!line.isEmpty()) appendLog(line);
+    }
 }
 
 void MainWindow::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus) {
+    onProcessReadyRead();
+    if (!processOutputBuffer_.trimmed().isEmpty()) {
+        appendLog(processOutputBuffer_);
+    }
+    processOutputBuffer_.clear();
+
     const bool ok = (exitStatus == QProcess::NormalExit && exitCode == 0);
     const QString statusStr = (exitStatus == QProcess::NormalExit) ? "NormalExit" : "CrashExit";
     const quint32 code = static_cast<quint32>(exitCode);
@@ -1823,9 +1892,19 @@ void MainWindow::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus
     process_->deleteLater();
     process_ = nullptr;
 
+    if (ok) {
+        if (currentJobMode_ == "single" && singleStepProgress_) {
+            singleStepProgress_->setValue(singleStepProgress_->maximum());
+        } else if (currentJobMode_ == "batch" && batchStepProgress_) {
+            batchStepProgress_->setValue(batchStepProgress_->maximum());
+        }
+    }
+
     if (jobQueue_.isEmpty() || currentJobIndex_ < 0) {
         batchProgress_->setValue(0);
         currentJobIndex_ = -1;
+        currentJobMode_.clear();
+        currentJobTotalSteps_ = 0;
         return;
     }
 
@@ -1846,6 +1925,8 @@ void MainWindow::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus
         jobQueue_.clear();
         currentJobIndex_ = -1;
         batchProgress_->setValue(100);
+        currentJobMode_.clear();
+        currentJobTotalSteps_ = 0;
         return;
     }
 

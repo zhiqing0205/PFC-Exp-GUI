@@ -93,8 +93,13 @@ private:
     QVector<RunJob> jobQueue_;
     int currentJobIndex_ = -1;
     QString currentOutputDir_;
+    QString processOutputBuffer_;
+    QString currentJobMode_;
+    int currentJobTotalSteps_ = 0;
 
     QPlainTextEdit* log_ = nullptr;
+    QProgressBar* singleStepProgress_ = nullptr;
+    QProgressBar* batchStepProgress_ = nullptr;
 
     // Single-run widgets
     QDoubleSpinBox* singleU0_ = nullptr;
