@@ -35,6 +35,7 @@
 #include <QScrollArea>
 #include <QSplitter>
 #include <QSpinBox>
+#include <QStackedWidget>
 #include <QStandardPaths>
 #include <QStyle>
 #include <QTabBar>
@@ -301,19 +302,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     batchTab->setLayout(batchLayout);
 
     auto* batchHint = new QLabel(
-        "Batch Sweep: enable Sweep for u0 / con0 / steps, then fill Start/End/Step.\n"
-        "Disabled fields are ignored.");
+        "Batch Sweep: for each parameter choose Fixed / Range / List.\n"
+        "• Range: Start/End/Step -> preview as comma-separated values\n"
+        "• List: comma-separated values, e.g. 0.05,0.10,0.15");
     batchHint->setProperty("hint", true);
     batchHint->setWordWrap(true);
-
-    auto* batchSweepBox = new QGroupBox("Sweep (Cartesian product)");
-    auto* sweepGrid = new QGridLayout;
-    sweepGrid->setVerticalSpacing(6);
-    sweepGrid->setHorizontalSpacing(10);
-    sweepGrid->setColumnStretch(2, 1);
-    sweepGrid->setColumnStretch(3, 1);
-    sweepGrid->setColumnStretch(4, 1);
-    sweepGrid->setColumnStretch(5, 1);
 
     auto header = [](const QString& text) {
         auto* l = new QLabel(text);
@@ -324,120 +317,205 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         return l;
     };
 
-    sweepGrid->addWidget(header("Param"), 0, 0);
-    sweepGrid->addWidget(header("Sweep"), 0, 1);
-    sweepGrid->addWidget(header("Single"), 0, 2);
-    sweepGrid->addWidget(header("Start"), 0, 3);
-    sweepGrid->addWidget(header("End"), 0, 4);
-    sweepGrid->addWidget(header("Step"), 0, 5);
+    auto* batchParamsBox = new QGroupBox("Parameters");
+    auto* batchParamsGrid = new QGridLayout;
+    batchParamsGrid->setVerticalSpacing(6);
+    batchParamsGrid->setHorizontalSpacing(12);
+    batchParamsGrid->setColumnStretch(2, 1);
 
-    sweepU0Enable_ = new QCheckBox;
-    sweepU0Enable_->setToolTip("Enable sweep for u0");
-    sweepU0Single_ = makeDoubleSpin(-2.0, 2.0, 0.05, 6, 0.01);
-    sweepU0Start_ = makeDoubleSpin(-2.0, 2.0, 0.0, 6, 0.01);
-    sweepU0End_ = makeDoubleSpin(-2.0, 2.0, 0.2, 6, 0.01);
-    sweepU0Step_ = makeDoubleSpin(1e-9, 10.0, 0.05, 6, 0.01);
+    batchParamsGrid->addWidget(header("Param"), 0, 0);
+    batchParamsGrid->addWidget(header("Mode"), 0, 1);
+    batchParamsGrid->addWidget(header("Values"), 0, 2);
 
-    sweepCon0Enable_ = new QCheckBox;
-    sweepCon0Enable_->setToolTip("Enable sweep for con0");
-    sweepCon0Single_ = makeDoubleSpin(0.0, 1.0, 0.2, 6, 0.01);
-    sweepCon0Start_ = makeDoubleSpin(0.0, 1.0, 0.1, 6, 0.01);
-    sweepCon0End_ = makeDoubleSpin(0.0, 1.0, 0.3, 6, 0.01);
-    sweepCon0Step_ = makeDoubleSpin(1e-9, 1.0, 0.05, 6, 0.01);
+    batchParams_.clear();
+    batchParams_.reserve(16);
 
-    sweepStepsEnable_ = new QCheckBox;
-    sweepStepsEnable_->setToolTip("Enable sweep for steps");
-    sweepStepsSingle_ = makeIntSpin(1, 100000000, 200, 10);
-    sweepStepsStart_ = makeIntSpin(1, 100000000, 100, 10);
-    sweepStepsEnd_ = makeIntSpin(1, 100000000, 300, 10);
-    sweepStepsStep_ = makeIntSpin(1, 100000000, 100, 10);
-
-    auto addSweepRow = [&](int row, const QString& name, QCheckBox* enable, QWidget* single, QWidget* start, QWidget* end, QWidget* step) {
-        auto* label = new QLabel(name);
-        label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        sweepGrid->addWidget(label, row, 0);
-        sweepGrid->addWidget(enable, row, 1, Qt::AlignCenter);
-        sweepGrid->addWidget(single, row, 2);
-        sweepGrid->addWidget(start, row, 3);
-        sweepGrid->addWidget(end, row, 4);
-        sweepGrid->addWidget(step, row, 5);
+    auto connectSpinChanged = [this](QObject* w) {
+        if (!w) return;
+        if (auto* d = qobject_cast<QDoubleSpinBox*>(w)) {
+            connect(d, &QDoubleSpinBox::valueChanged, this, &MainWindow::updateBatchPreview);
+        } else if (auto* s = qobject_cast<QSpinBox*>(w)) {
+            connect(s, &QSpinBox::valueChanged, this, &MainWindow::updateBatchPreview);
+        } else if (auto* e = qobject_cast<QLineEdit*>(w)) {
+            connect(e, &QLineEdit::textChanged, this, &MainWindow::updateBatchPreview);
+        } else if (auto* c = qobject_cast<QComboBox*>(w)) {
+            connect(c, &QComboBox::currentIndexChanged, this, &MainWindow::updateBatchPreview);
+        }
     };
 
-    addSweepRow(1, "u0", sweepU0Enable_, sweepU0Single_, sweepU0Start_, sweepU0End_, sweepU0Step_);
-    addSweepRow(2, "con0", sweepCon0Enable_, sweepCon0Single_, sweepCon0Start_, sweepCon0End_, sweepCon0Step_);
-    addSweepRow(3, "steps", sweepStepsEnable_, sweepStepsSingle_, sweepStepsStart_, sweepStepsEnd_, sweepStepsStep_);
+    auto addDoubleParam = [&](const QString& key, const QString& labelText, double minV, double maxV, double defV, int decimals, double stepV) {
+        BatchParamWidgets p;
+        p.key = key;
+        p.label = labelText;
+        p.isInt = false;
+        p.decimals = decimals;
 
-    batchSweepBox->setLayout(sweepGrid);
+        auto* name = new QLabel(labelText);
+        name->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
 
-    auto* batchFixedBox = new QGroupBox("Fixed Parameters");
-    auto* batchFixedGrid = new QGridLayout;
-    batchFixedGrid->setVerticalSpacing(6);
-    batchFixedGrid->setHorizontalSpacing(12);
-    batchFixedGrid->setColumnStretch(1, 1);
-    batchFixedGrid->setColumnStretch(3, 1);
-    batchSig_ = makeDoubleSpin(0.0, 2.0, 0.05, 6, 0.01);
-    batchDt_ = makeDoubleSpin(1e-6, 1.0, 0.05, 6, 0.01);
-    batchDx_ = makeDoubleSpin(1e-6, 10.0, 0.125, 6, 0.01);
-    batchMod_ = makeIntSpin(1, 100000000, 25, 1);
-    batchSeed_ = makeIntSpin(0, 2147483647, 20200604, 1);
-    batchGrainX_ = makeIntSpin(1, std::max(1, kGridL), std::min(16, std::max(1, kGridL)), 1);
-    batchGrainY_ = makeIntSpin(1, std::max(1, kGridM), std::min(16, std::max(1, kGridM)), 1);
-    batchGrainZ_ = makeIntSpin(1, std::max(1, kGridN), std::min(1, std::max(1, kGridN)), 1);
-    batchAxx_ = makeDoubleSpin(0.0, 1000.0, 0.0, 6, 0.1);
+        p.mode = new QComboBox;
+        p.mode->addItem("Fixed", 0);
+        p.mode->addItem("Range", 1);
+        p.mode->addItem("List", 2);
+        p.mode->setCurrentIndex(0);
 
-    auto addBatchFixed = [&](int row, int colPair, const QString& labelText, QWidget* editor) {
-        auto* label = new QLabel(labelText);
-        label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        batchFixedGrid->addWidget(label, row, colPair * 2);
-        batchFixedGrid->addWidget(editor, row, colPair * 2 + 1);
+        p.stack = new QStackedWidget;
+
+        // Fixed page
+        auto* fixedPage = new QWidget;
+        auto* fixedLayout = new QHBoxLayout;
+        fixedLayout->setContentsMargins(0, 0, 0, 0);
+        p.fixedDouble = makeDoubleSpin(minV, maxV, defV, decimals, stepV);
+        fixedLayout->addWidget(p.fixedDouble, 1);
+        fixedPage->setLayout(fixedLayout);
+
+        // Range page
+        auto* rangePage = new QWidget;
+        auto* rangeLayout = new QHBoxLayout;
+        rangeLayout->setContentsMargins(0, 0, 0, 0);
+        rangeLayout->setSpacing(8);
+        rangeLayout->addWidget(new QLabel("Start"));
+        p.rangeStartDouble = makeDoubleSpin(minV, maxV, defV, decimals, stepV);
+        rangeLayout->addWidget(p.rangeStartDouble);
+        rangeLayout->addWidget(new QLabel("End"));
+        p.rangeEndDouble = makeDoubleSpin(minV, maxV, defV, decimals, stepV);
+        rangeLayout->addWidget(p.rangeEndDouble);
+        rangeLayout->addWidget(new QLabel("Step"));
+        const double maxStep = std::max(1e-12, maxV - minV);
+        p.rangeStepDouble = makeDoubleSpin(1e-12, maxStep, stepV, decimals, stepV);
+        rangeLayout->addWidget(p.rangeStepDouble);
+        rangeLayout->addWidget(new QLabel("List"));
+        p.rangePreview = new QLineEdit;
+        p.rangePreview->setReadOnly(true);
+        p.rangePreview->setPlaceholderText("e.g. 0.0,0.1,0.2");
+        rangeLayout->addWidget(p.rangePreview, 1);
+        rangePage->setLayout(rangeLayout);
+
+        // List page
+        auto* listPage = new QWidget;
+        auto* listLayout = new QHBoxLayout;
+        listLayout->setContentsMargins(0, 0, 0, 0);
+        auto* listLabel = new QLabel("Values");
+        listLayout->addWidget(listLabel);
+        p.listEdit = new QLineEdit;
+        p.listEdit->setPlaceholderText("e.g. 0.05,0.10,0.15");
+        listLayout->addWidget(p.listEdit, 1);
+        listPage->setLayout(listLayout);
+
+        p.stack->addWidget(fixedPage);
+        p.stack->addWidget(rangePage);
+        p.stack->addWidget(listPage);
+        p.stack->setCurrentIndex(p.mode->currentIndex());
+
+        connect(p.mode, &QComboBox::currentIndexChanged, this, [stack = p.stack](int idx) { stack->setCurrentIndex(idx); });
+
+        // Trigger preview updates
+        connectSpinChanged(p.mode);
+        connectSpinChanged(p.fixedDouble);
+        connectSpinChanged(p.rangeStartDouble);
+        connectSpinChanged(p.rangeEndDouble);
+        connectSpinChanged(p.rangeStepDouble);
+        connectSpinChanged(p.listEdit);
+
+        const int row = batchParamsGrid->rowCount();
+        batchParamsGrid->addWidget(name, row, 0);
+        batchParamsGrid->addWidget(p.mode, row, 1);
+        batchParamsGrid->addWidget(p.stack, row, 2);
+        batchParams_.push_back(p);
     };
 
-    addBatchFixed(0, 0, "sig", batchSig_);
-    addBatchFixed(0, 1, "seed", batchSeed_);
-    addBatchFixed(1, 0, "dt", batchDt_);
-    addBatchFixed(1, 1, "dx", batchDx_);
-    addBatchFixed(2, 0, "mod", batchMod_);
-    addBatchFixed(2, 1, "axx (noise)", batchAxx_);
-    addBatchFixed(3, 0, "grainx", batchGrainX_);
-    addBatchFixed(3, 1, "grainy", batchGrainY_);
-    addBatchFixed(4, 0, "grainz", batchGrainZ_);
+    auto addIntParam = [&](const QString& key, const QString& labelText, int minV, int maxV, int defV, int stepV, const QString& listPlaceholder) {
+        BatchParamWidgets p;
+        p.key = key;
+        p.label = labelText;
+        p.isInt = true;
 
-    batchFixedBox->setLayout(batchFixedGrid);
+        auto* name = new QLabel(labelText);
+        name->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
 
-    auto updateSweepEnabled = [this]() {
-        const bool u0On = sweepU0Enable_->isChecked();
-        sweepU0Single_->setEnabled(!u0On);
-        sweepU0Start_->setEnabled(u0On);
-        sweepU0End_->setEnabled(u0On);
-        sweepU0Step_->setEnabled(u0On);
+        p.mode = new QComboBox;
+        p.mode->addItem("Fixed", 0);
+        p.mode->addItem("Range", 1);
+        p.mode->addItem("List", 2);
+        p.mode->setCurrentIndex(0);
 
-        const bool con0On = sweepCon0Enable_->isChecked();
-        sweepCon0Single_->setEnabled(!con0On);
-        sweepCon0Start_->setEnabled(con0On);
-        sweepCon0End_->setEnabled(con0On);
-        sweepCon0Step_->setEnabled(con0On);
+        p.stack = new QStackedWidget;
 
-        const bool stepsOn = sweepStepsEnable_->isChecked();
-        sweepStepsSingle_->setEnabled(!stepsOn);
-        sweepStepsStart_->setEnabled(stepsOn);
-        sweepStepsEnd_->setEnabled(stepsOn);
-        sweepStepsStep_->setEnabled(stepsOn);
+        auto* fixedPage = new QWidget;
+        auto* fixedLayout = new QHBoxLayout;
+        fixedLayout->setContentsMargins(0, 0, 0, 0);
+        p.fixedInt = makeIntSpin(minV, maxV, defV, stepV);
+        fixedLayout->addWidget(p.fixedInt, 1);
+        fixedPage->setLayout(fixedLayout);
+
+        auto* rangePage = new QWidget;
+        auto* rangeLayout = new QHBoxLayout;
+        rangeLayout->setContentsMargins(0, 0, 0, 0);
+        rangeLayout->setSpacing(8);
+        rangeLayout->addWidget(new QLabel("Start"));
+        p.rangeStartInt = makeIntSpin(minV, maxV, defV, stepV);
+        rangeLayout->addWidget(p.rangeStartInt);
+        rangeLayout->addWidget(new QLabel("End"));
+        p.rangeEndInt = makeIntSpin(minV, maxV, defV, stepV);
+        rangeLayout->addWidget(p.rangeEndInt);
+        rangeLayout->addWidget(new QLabel("Step"));
+        p.rangeStepInt = makeIntSpin(1, std::max(1, maxV - minV), stepV, 1);
+        rangeLayout->addWidget(p.rangeStepInt);
+        rangeLayout->addWidget(new QLabel("List"));
+        p.rangePreview = new QLineEdit;
+        p.rangePreview->setReadOnly(true);
+        p.rangePreview->setPlaceholderText(listPlaceholder);
+        rangeLayout->addWidget(p.rangePreview, 1);
+        rangePage->setLayout(rangeLayout);
+
+        auto* listPage = new QWidget;
+        auto* listLayout = new QHBoxLayout;
+        listLayout->setContentsMargins(0, 0, 0, 0);
+        listLayout->addWidget(new QLabel("Values"));
+        p.listEdit = new QLineEdit;
+        p.listEdit->setPlaceholderText(listPlaceholder);
+        listLayout->addWidget(p.listEdit, 1);
+        listPage->setLayout(listLayout);
+
+        p.stack->addWidget(fixedPage);
+        p.stack->addWidget(rangePage);
+        p.stack->addWidget(listPage);
+        p.stack->setCurrentIndex(p.mode->currentIndex());
+
+        connect(p.mode, &QComboBox::currentIndexChanged, this, [stack = p.stack](int idx) { stack->setCurrentIndex(idx); });
+
+        connectSpinChanged(p.mode);
+        connectSpinChanged(p.fixedInt);
+        connectSpinChanged(p.rangeStartInt);
+        connectSpinChanged(p.rangeEndInt);
+        connectSpinChanged(p.rangeStepInt);
+        connectSpinChanged(p.listEdit);
+
+        const int row = batchParamsGrid->rowCount();
+        batchParamsGrid->addWidget(name, row, 0);
+        batchParamsGrid->addWidget(p.mode, row, 1);
+        batchParamsGrid->addWidget(p.stack, row, 2);
+        batchParams_.push_back(p);
     };
 
-    connect(sweepU0Enable_, &QCheckBox::toggled, this, [=](bool) {
-        updateSweepEnabled();
-        updateBatchPreview();
-    });
-    connect(sweepCon0Enable_, &QCheckBox::toggled, this, [=](bool) {
-        updateSweepEnabled();
-        updateBatchPreview();
-    });
-    connect(sweepStepsEnable_, &QCheckBox::toggled, this, [=](bool) {
-        updateSweepEnabled();
-        updateBatchPreview();
-    });
+    // Order matters for the Cartesian product (outer -> inner).
+    addDoubleParam("u0", "u0 (density)", -2.0, 2.0, 0.05, 6, 0.01);
+    addDoubleParam("con0", "con0 (concentration)", 0.0, 1.0, 0.2, 6, 0.01);
+    addDoubleParam("sig", "sig", 0.0, 2.0, 0.05, 6, 0.01);
+    addDoubleParam("dt", "dt", 1e-6, 1.0, 0.05, 6, 0.01);
+    addDoubleParam("dx", "dx", 1e-6, 10.0, 0.125, 6, 0.01);
 
-    updateSweepEnabled();
+    addIntParam("steps", "steps", 1, 100000000, 200, 10, "e.g. 100,200,300");
+    addIntParam("mod", "mod", 1, 100000000, 25, 1, "e.g. 25,50,100");
+    addIntParam("seed", "seed", 0, 2147483647, 20200604, 1, "e.g. 1,2,3");
+
+    addIntParam("grainx", "grainx", 1, std::max(1, kGridL), std::min(16, std::max(1, kGridL)), 1, "e.g. 8,16,32");
+    addIntParam("grainy", "grainy", 1, std::max(1, kGridM), std::min(16, std::max(1, kGridM)), 1, "e.g. 8,16,32");
+    addIntParam("grainz", "grainz", 1, std::max(1, kGridN), std::min(1, std::max(1, kGridN)), 1, "e.g. 1");
+
+    addDoubleParam("axx", "axx (noise)", 0.0, 1000.0, 0.0, 6, 0.1);
+
+    batchParamsBox->setLayout(batchParamsGrid);
 
     auto* batchOutBox = new QGroupBox("Output");
     auto* batchOutForm = new QFormLayout;
@@ -494,9 +572,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     batchButtons->setLayout(batchButtonsLayout);
 
     batchLayout->addWidget(batchHint);
-    batchLayout->addWidget(batchSweepBox);
+    batchLayout->addWidget(batchParamsBox);
     batchLayout->addWidget(batchPreview_);
-    batchLayout->addWidget(batchFixedBox);
     batchLayout->addWidget(batchOutBox);
     batchLayout->addWidget(batchStepProgress_);
     batchLayout->addWidget(batchProgress_);
@@ -747,33 +824,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             << "Batch sweep on loading rate / amplitude");
 
     refreshResultsFileList();
-
-    auto connectValueChanged = [&](QObject* widget) {
-        if (auto* d = qobject_cast<QDoubleSpinBox*>(widget)) {
-            connect(d, &QDoubleSpinBox::valueChanged, this, &MainWindow::updateBatchPreview);
-        } else if (auto* s = qobject_cast<QSpinBox*>(widget)) {
-            connect(s, &QSpinBox::valueChanged, this, &MainWindow::updateBatchPreview);
-        } else if (auto* c = qobject_cast<QCheckBox*>(widget)) {
-            connect(c, &QCheckBox::toggled, this, &MainWindow::updateBatchPreview);
-        } else if (auto* e = qobject_cast<QLineEdit*>(widget)) {
-            connect(e, &QLineEdit::textChanged, this, &MainWindow::updateBatchPreview);
-        }
-    };
-
-    connectValueChanged(sweepU0Single_);
-    connectValueChanged(sweepU0Start_);
-    connectValueChanged(sweepU0End_);
-    connectValueChanged(sweepU0Step_);
-    connectValueChanged(sweepCon0Single_);
-    connectValueChanged(sweepCon0Start_);
-    connectValueChanged(sweepCon0End_);
-    connectValueChanged(sweepCon0Step_);
-    connectValueChanged(sweepStepsSingle_);
-    connectValueChanged(sweepStepsStart_);
-    connectValueChanged(sweepStepsEnd_);
-    connectValueChanged(sweepStepsStep_);
-    connectValueChanged(batchName_);
-    connectValueChanged(batchBaseOutDir_);
+    if (batchName_) connect(batchName_, &QLineEdit::textChanged, this, &MainWindow::updateBatchPreview);
+    if (batchBaseOutDir_) connect(batchBaseOutDir_, &QLineEdit::textChanged, this, &MainWindow::updateBatchPreview);
 
     updateBatchPreview();
     setRunningUi(false);
@@ -1479,20 +1531,6 @@ RunParams MainWindow::singleParams() const {
     return p;
 }
 
-RunParams MainWindow::batchFixedParams() const {
-    RunParams p;
-    p.sig = batchSig_->value();
-    p.dt = batchDt_->value();
-    p.dx = batchDx_->value();
-    p.mod = batchMod_->value();
-    p.seed = batchSeed_->value();
-    p.grainx = batchGrainX_->value();
-    p.grainy = batchGrainY_->value();
-    p.grainz = batchGrainZ_->value();
-    p.axx = batchAxx_->value();
-    return p;
-}
-
 QStringList MainWindow::buildArgs(const RunParams& params, const QString& outDir) const {
     auto f = [](double v) { return QString::number(v, 'g', 10); };
     QStringList args;
@@ -1581,46 +1619,90 @@ static QVector<int> makeIntRange(int start, int end, int step, QString* err) {
     return out;
 }
 
+static QStringList splitValueList(const QString& text) {
+    if (text.trimmed().isEmpty()) return {};
+    QString s = text;
+    s.replace(QChar(0xFF0C), QChar(',')); // Chinese comma
+    s.replace(';', ',');
+    const QStringList parts = s.split(QRegularExpression(R"([,\s]+)"), Qt::SkipEmptyParts);
+    QStringList out;
+    out.reserve(parts.size());
+    for (const auto& p : parts) {
+        const QString t = p.trimmed();
+        if (!t.isEmpty()) out.push_back(t);
+    }
+    return out;
+}
+
+static QVector<double> parseDoubleList(const QString& text, QString* err) {
+    QVector<double> out;
+    const QStringList parts = splitValueList(text);
+    if (parts.isEmpty()) {
+        if (err) *err = "List is empty.";
+        return out;
+    }
+    out.reserve(parts.size());
+    for (const auto& s : parts) {
+        bool ok = false;
+        const double v = s.toDouble(&ok);
+        if (!ok || !std::isfinite(v)) {
+            if (err) *err = "Invalid number: " + s;
+            out.clear();
+            return out;
+        }
+        out.push_back(v);
+    }
+    return out;
+}
+
+static QVector<int> parseIntList(const QString& text, QString* err) {
+    QVector<int> out;
+    const QStringList parts = splitValueList(text);
+    if (parts.isEmpty()) {
+        if (err) *err = "List is empty.";
+        return out;
+    }
+    out.reserve(parts.size());
+    for (const auto& s : parts) {
+        bool ok = false;
+        const qlonglong v = s.toLongLong(&ok);
+        if (!ok) {
+            if (err) *err = "Invalid integer: " + s;
+            out.clear();
+            return out;
+        }
+        if (v < std::numeric_limits<int>::min() || v > std::numeric_limits<int>::max()) {
+            if (err) *err = "Integer out of range: " + s;
+            out.clear();
+            return out;
+        }
+        out.push_back(static_cast<int>(v));
+    }
+    return out;
+}
+
+static QString joinPreviewDoubles(const QVector<double>& values, int maxItems = 64) {
+    const int shown = std::min(static_cast<int>(values.size()), maxItems);
+    QStringList parts;
+    parts.reserve(shown);
+    for (int i = 0; i < shown; ++i) parts << QString::number(values.at(i), 'g', 12);
+    QString s = parts.join(',');
+    if (values.size() > shown) s += QString(",…(+%1)").arg(values.size() - shown);
+    return s;
+}
+
+static QString joinPreviewInts(const QVector<int>& values, int maxItems = 64) {
+    const int shown = std::min(static_cast<int>(values.size()), maxItems);
+    QStringList parts;
+    parts.reserve(shown);
+    for (int i = 0; i < shown; ++i) parts << QString::number(values.at(i));
+    QString s = parts.join(',');
+    if (values.size() > shown) s += QString(",…(+%1)").arg(values.size() - shown);
+    return s;
+}
+
 QVector<RunJob> MainWindow::buildBatchJobs(const QString& baseDir, const QString& batchName, QString* errorOut) const {
     const int maxRuns = 5000;
-
-    const RunParams fixed = batchFixedParams();
-
-    QString err;
-    const QVector<double> u0Values = sweepU0Enable_->isChecked()
-        ? makeDoubleRange(sweepU0Start_->value(), sweepU0End_->value(), sweepU0Step_->value(), &err)
-        : QVector<double>{sweepU0Single_->value()};
-    if (!err.isEmpty()) {
-        if (errorOut) *errorOut = "u0: " + err;
-        return {};
-    }
-
-    const QVector<double> con0Values = sweepCon0Enable_->isChecked()
-        ? makeDoubleRange(sweepCon0Start_->value(), sweepCon0End_->value(), sweepCon0Step_->value(), &err)
-        : QVector<double>{sweepCon0Single_->value()};
-    if (!err.isEmpty()) {
-        if (errorOut) *errorOut = "con0: " + err;
-        return {};
-    }
-
-    const QVector<int> stepsValues = sweepStepsEnable_->isChecked()
-        ? makeIntRange(sweepStepsStart_->value(), sweepStepsEnd_->value(), sweepStepsStep_->value(), &err)
-        : QVector<int>{sweepStepsSingle_->value()};
-    if (!err.isEmpty()) {
-        if (errorOut) *errorOut = "steps: " + err;
-        return {};
-    }
-
-    const long long total =
-        static_cast<long long>(u0Values.size()) * static_cast<long long>(con0Values.size()) * static_cast<long long>(stepsValues.size());
-    if (total <= 0) {
-        if (errorOut) *errorOut = "No runs to execute.";
-        return {};
-    }
-    if (total > maxRuns) {
-        if (errorOut) *errorOut = QString("Too many runs (%1). Reduce ranges or steps (limit: %2).").arg(total).arg(maxRuns);
-        return {};
-    }
     if (baseDir.trimmed().isEmpty()) {
         if (errorOut) *errorOut = "Base output dir is empty.";
         return {};
@@ -1631,26 +1713,154 @@ QVector<RunJob> MainWindow::buildBatchJobs(const QString& baseDir, const QString
     }
     const QString batchRoot = QDir(baseDir).filePath(batchName);
 
-    QVector<RunJob> jobs;
-    jobs.reserve(static_cast<int>(total));
-    int idx = 1;
-    for (const double u0 : u0Values) {
-        for (const double con0 : con0Values) {
-            for (const int steps : stepsValues) {
-                RunJob job;
-                job.mode = "batch";
-                job.index = idx;
-                job.total = static_cast<int>(total);
-                job.params = fixed;
-                job.params.u0 = u0;
-                job.params.con0 = con0;
-                job.params.steps = steps;
-                job.outDir = QDir(batchRoot).filePath(QString("run_%1").arg(idx, 4, 10, QChar('0')));
-                jobs.push_back(job);
-                ++idx;
+    struct ParamValues {
+        QString key;
+        bool isInt = false;
+        QVector<double> dvals;
+        QVector<int> ivals;
+    };
+
+    QVector<ParamValues> params;
+    params.reserve(batchParams_.size());
+
+    auto addValuesOrFail = [&](const BatchParamWidgets& p) -> bool {
+        if (!p.mode || !p.stack) return true;
+
+        const int mode = p.mode->currentIndex(); // 0 fixed, 1 range, 2 list
+        QString err;
+        ParamValues pv;
+        pv.key = p.key;
+        pv.isInt = p.isInt;
+
+        if (p.isInt) {
+            const int minV = p.fixedInt ? p.fixedInt->minimum() : std::numeric_limits<int>::min();
+            const int maxV = p.fixedInt ? p.fixedInt->maximum() : std::numeric_limits<int>::max();
+            if (mode == 0) {
+                pv.ivals = QVector<int>{p.fixedInt ? p.fixedInt->value() : 0};
+            } else if (mode == 1) {
+                pv.ivals = makeIntRange(p.rangeStartInt->value(), p.rangeEndInt->value(), p.rangeStepInt->value(), &err);
+            } else {
+                pv.ivals = parseIntList(p.listEdit ? p.listEdit->text() : QString(), &err);
+            }
+            if (!err.isEmpty()) {
+                if (errorOut) *errorOut = p.key + ": " + err;
+                return false;
+            }
+            for (const int v : pv.ivals) {
+                if (v < minV || v > maxV) {
+                    if (errorOut) {
+                        *errorOut = QString("%1: value %2 out of range [%3, %4].")
+                                        .arg(p.key)
+                                        .arg(v)
+                                        .arg(minV)
+                                        .arg(maxV);
+                    }
+                    return false;
+                }
+            }
+        } else {
+            const double minV = p.fixedDouble ? p.fixedDouble->minimum() : -std::numeric_limits<double>::infinity();
+            const double maxV = p.fixedDouble ? p.fixedDouble->maximum() : std::numeric_limits<double>::infinity();
+            if (mode == 0) {
+                pv.dvals = QVector<double>{p.fixedDouble ? p.fixedDouble->value() : 0.0};
+            } else if (mode == 1) {
+                pv.dvals = makeDoubleRange(p.rangeStartDouble->value(), p.rangeEndDouble->value(), p.rangeStepDouble->value(), &err);
+            } else {
+                pv.dvals = parseDoubleList(p.listEdit ? p.listEdit->text() : QString(), &err);
+            }
+            if (!err.isEmpty()) {
+                if (errorOut) *errorOut = p.key + ": " + err;
+                return false;
+            }
+            for (const double v : pv.dvals) {
+                if (!(v >= minV - 1e-12 && v <= maxV + 1e-12)) {
+                    if (errorOut) {
+                        *errorOut = QString("%1: value %2 out of range [%3, %4].")
+                                        .arg(p.key)
+                                        .arg(QString::number(v, 'g', 12))
+                                        .arg(QString::number(minV, 'g', 12))
+                                        .arg(QString::number(maxV, 'g', 12));
+                    }
+                    return false;
+                }
             }
         }
+
+        params.push_back(std::move(pv));
+        return true;
+    };
+
+    for (const auto& p : batchParams_) {
+        if (!addValuesOrFail(p)) return {};
     }
+
+    long long total = 1;
+    for (const auto& p : params) {
+        const int count = p.isInt ? p.ivals.size() : p.dvals.size();
+        if (count <= 0) {
+            if (errorOut) *errorOut = "No runs to execute.";
+            return {};
+        }
+        if (total > (maxRuns / std::max(1, count))) {
+            if (errorOut) *errorOut = QString("Too many runs (> %1). Reduce ranges/lists (limit: %1).").arg(maxRuns);
+            return {};
+        }
+        total *= count;
+    }
+    if (total <= 0) {
+        if (errorOut) *errorOut = "No runs to execute.";
+        return {};
+    }
+
+    auto applyParamDouble = [](RunParams& rp, const QString& key, double v) {
+        if (key == "u0") rp.u0 = v;
+        else if (key == "con0") rp.con0 = v;
+        else if (key == "sig") rp.sig = v;
+        else if (key == "dt") rp.dt = v;
+        else if (key == "dx") rp.dx = v;
+        else if (key == "axx") rp.axx = v;
+    };
+    auto applyParamInt = [](RunParams& rp, const QString& key, int v) {
+        if (key == "steps") rp.steps = v;
+        else if (key == "mod") rp.mod = v;
+        else if (key == "seed") rp.seed = v;
+        else if (key == "grainx") rp.grainx = v;
+        else if (key == "grainy") rp.grainy = v;
+        else if (key == "grainz") rp.grainz = v;
+    };
+
+    QVector<int> indices;
+    indices.fill(0, params.size());
+
+    QVector<RunJob> jobs;
+    jobs.reserve(static_cast<int>(total));
+
+    for (long long i = 0; i < total; ++i) {
+        RunParams rp;
+        for (int pi = 0; pi < params.size(); ++pi) {
+            const auto& pv = params.at(pi);
+            if (pv.isInt) applyParamInt(rp, pv.key, pv.ivals.at(indices.at(pi)));
+            else applyParamDouble(rp, pv.key, pv.dvals.at(indices.at(pi)));
+        }
+
+        const int idx = static_cast<int>(i) + 1;
+        RunJob job;
+        job.mode = "batch";
+        job.index = idx;
+        job.total = static_cast<int>(total);
+        job.params = rp;
+        job.outDir = QDir(batchRoot).filePath(QString("run_%1").arg(idx, 4, 10, QChar('0')));
+        jobs.push_back(job);
+
+        // Odometer increment (last param changes fastest).
+        for (int k = params.size() - 1; k >= 0; --k) {
+            const int count = params.at(k).isInt ? params.at(k).ivals.size() : params.at(k).dvals.size();
+            indices[k]++;
+            if (indices[k] < count) break;
+            indices[k] = 0;
+        }
+    }
+
     return jobs;
 }
 
@@ -1840,32 +2050,105 @@ void MainWindow::openCurrentOutputDir() {
 }
 
 void MainWindow::updateBatchPreview() {
-    QString err;
-    const QVector<double> u0Values = sweepU0Enable_->isChecked()
-        ? makeDoubleRange(sweepU0Start_->value(), sweepU0End_->value(), sweepU0Step_->value(), &err)
-        : QVector<double>{sweepU0Single_->value()};
-    if (!err.isEmpty()) {
-        batchPreview_->setText("Batch preview: u0: " + err);
-        return;
-    }
-    const QVector<double> con0Values = sweepCon0Enable_->isChecked()
-        ? makeDoubleRange(sweepCon0Start_->value(), sweepCon0End_->value(), sweepCon0Step_->value(), &err)
-        : QVector<double>{sweepCon0Single_->value()};
-    if (!err.isEmpty()) {
-        batchPreview_->setText("Batch preview: con0: " + err);
-        return;
-    }
-    const QVector<int> stepsValues = sweepStepsEnable_->isChecked()
-        ? makeIntRange(sweepStepsStart_->value(), sweepStepsEnd_->value(), sweepStepsStep_->value(), &err)
-        : QVector<int>{sweepStepsSingle_->value()};
-    if (!err.isEmpty()) {
-        batchPreview_->setText("Batch preview: steps: " + err);
-        return;
+    if (!batchPreview_) return;
+    const int maxRuns = 5000;
+
+    long long total = 1;
+    QStringList varied;
+
+    for (auto& p : batchParams_) {
+        if (!p.mode || !p.stack) continue;
+
+        const int mode = p.mode->currentIndex(); // 0 fixed, 1 range, 2 list
+        p.stack->setCurrentIndex(mode);
+
+        QString err;
+        int count = 1;
+
+        if (p.isInt) {
+            QVector<int> vals;
+            const int minV = p.fixedInt ? p.fixedInt->minimum() : std::numeric_limits<int>::min();
+            const int maxV = p.fixedInt ? p.fixedInt->maximum() : std::numeric_limits<int>::max();
+
+            if (mode == 0) {
+                vals = QVector<int>{p.fixedInt ? p.fixedInt->value() : 0};
+            } else if (mode == 1) {
+                vals = makeIntRange(p.rangeStartInt->value(), p.rangeEndInt->value(), p.rangeStepInt->value(), &err);
+                if (p.rangePreview) p.rangePreview->setText(joinPreviewInts(vals));
+            } else {
+                if (p.rangePreview) p.rangePreview->clear();
+                vals = parseIntList(p.listEdit ? p.listEdit->text() : QString(), &err);
+            }
+
+            if (!err.isEmpty()) {
+                batchPreview_->setText("Batch preview: " + p.key + ": " + err);
+                return;
+            }
+            for (const int v : vals) {
+                if (v < minV || v > maxV) {
+                    batchPreview_->setText(QString("Batch preview: %1: value %2 out of range [%3, %4].")
+                                               .arg(p.key)
+                                               .arg(v)
+                                               .arg(minV)
+                                               .arg(maxV));
+                    return;
+                }
+            }
+            count = vals.size();
+        } else {
+            QVector<double> vals;
+            const double minV = p.fixedDouble ? p.fixedDouble->minimum() : -std::numeric_limits<double>::infinity();
+            const double maxV = p.fixedDouble ? p.fixedDouble->maximum() : std::numeric_limits<double>::infinity();
+
+            if (mode == 0) {
+                vals = QVector<double>{p.fixedDouble ? p.fixedDouble->value() : 0.0};
+            } else if (mode == 1) {
+                vals = makeDoubleRange(p.rangeStartDouble->value(), p.rangeEndDouble->value(), p.rangeStepDouble->value(), &err);
+                if (p.rangePreview) p.rangePreview->setText(joinPreviewDoubles(vals));
+            } else {
+                if (p.rangePreview) p.rangePreview->clear();
+                vals = parseDoubleList(p.listEdit ? p.listEdit->text() : QString(), &err);
+            }
+
+            if (!err.isEmpty()) {
+                batchPreview_->setText("Batch preview: " + p.key + ": " + err);
+                return;
+            }
+            for (const double v : vals) {
+                if (!(v >= minV - 1e-12 && v <= maxV + 1e-12)) {
+                    batchPreview_->setText(QString("Batch preview: %1: value %2 out of range [%3, %4].")
+                                               .arg(p.key)
+                                               .arg(QString::number(v, 'g', 12))
+                                               .arg(QString::number(minV, 'g', 12))
+                                               .arg(QString::number(maxV, 'g', 12)));
+                    return;
+                }
+            }
+            count = vals.size();
+        }
+
+        if (count <= 0) {
+            batchPreview_->setText("Batch preview: No runs to execute.");
+            return;
+        }
+
+        if (mode != 0 && count > 1) varied << QString("%1=%2").arg(p.key).arg(count);
+
+        if (total <= maxRuns && total > (maxRuns / std::max(1, count))) {
+            total = maxRuns + 1;
+        } else if (total <= maxRuns) {
+            total *= count;
+        }
     }
 
-    const long long total =
-        static_cast<long long>(u0Values.size()) * static_cast<long long>(con0Values.size()) * static_cast<long long>(stepsValues.size());
-    batchPreview_->setText(QString("Batch preview: %1 run(s) will be executed.").arg(total));
+    QString msg;
+    if (total > maxRuns) {
+        msg = QString("Batch preview: too many runs (> %1). Reduce ranges/lists.").arg(maxRuns);
+    } else {
+        msg = QString("Batch preview: %1 run(s).").arg(total);
+    }
+    if (!varied.isEmpty()) msg += " " + varied.join(", ");
+    batchPreview_->setText(msg);
 }
 
 void MainWindow::onProcessReadyRead() {

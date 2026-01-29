@@ -17,6 +17,7 @@ class QListWidget;
 class QPlainTextEdit;
 class QProgressBar;
 class QSpinBox;
+class QStackedWidget;
 class QTabWidget;
 class QTableWidget;
 
@@ -72,7 +73,6 @@ private:
     QString formatRunLabel(int index, int total) const;
 
     RunParams singleParams() const;
-    RunParams batchFixedParams() const;
     QVector<RunJob> buildBatchJobs(const QString& baseDir, const QString& batchName, QString* errorOut) const;
     QStringList buildArgs(const RunParams& params, const QString& outDir) const;
     bool writeParamsJson(const RunJob& job, QString* errorOut) const;
@@ -118,33 +118,33 @@ private:
     QLineEdit* singleRunName_ = nullptr;
 
     // Batch-run widgets
-    QDoubleSpinBox* batchSig_ = nullptr;
-    QDoubleSpinBox* batchDt_ = nullptr;
-    QDoubleSpinBox* batchDx_ = nullptr;
-    QSpinBox* batchMod_ = nullptr;
-    QSpinBox* batchSeed_ = nullptr;
-    QSpinBox* batchGrainX_ = nullptr;
-    QSpinBox* batchGrainY_ = nullptr;
-    QSpinBox* batchGrainZ_ = nullptr;
-    QDoubleSpinBox* batchAxx_ = nullptr;
+    struct BatchParamWidgets {
+        QString key;
+        QString label;
+        bool isInt = false;
+        int decimals = 6;
 
-    QCheckBox* sweepU0Enable_ = nullptr;
-    QDoubleSpinBox* sweepU0Single_ = nullptr;
-    QDoubleSpinBox* sweepU0Start_ = nullptr;
-    QDoubleSpinBox* sweepU0End_ = nullptr;
-    QDoubleSpinBox* sweepU0Step_ = nullptr;
+        QComboBox* mode = nullptr;         // Fixed / Range / List
+        QStackedWidget* stack = nullptr;   // page per mode
 
-    QCheckBox* sweepCon0Enable_ = nullptr;
-    QDoubleSpinBox* sweepCon0Single_ = nullptr;
-    QDoubleSpinBox* sweepCon0Start_ = nullptr;
-    QDoubleSpinBox* sweepCon0End_ = nullptr;
-    QDoubleSpinBox* sweepCon0Step_ = nullptr;
+        // Fixed
+        QSpinBox* fixedInt = nullptr;
+        QDoubleSpinBox* fixedDouble = nullptr;
 
-    QCheckBox* sweepStepsEnable_ = nullptr;
-    QSpinBox* sweepStepsSingle_ = nullptr;
-    QSpinBox* sweepStepsStart_ = nullptr;
-    QSpinBox* sweepStepsEnd_ = nullptr;
-    QSpinBox* sweepStepsStep_ = nullptr;
+        // Range
+        QSpinBox* rangeStartInt = nullptr;
+        QSpinBox* rangeEndInt = nullptr;
+        QSpinBox* rangeStepInt = nullptr;
+        QDoubleSpinBox* rangeStartDouble = nullptr;
+        QDoubleSpinBox* rangeEndDouble = nullptr;
+        QDoubleSpinBox* rangeStepDouble = nullptr;
+        QLineEdit* rangePreview = nullptr;  // read-only, comma-separated list
+
+        // List
+        QLineEdit* listEdit = nullptr;      // comma-separated values
+    };
+
+    QVector<BatchParamWidgets> batchParams_;
 
     QLineEdit* batchBaseOutDir_ = nullptr;
     QLineEdit* batchName_ = nullptr;
