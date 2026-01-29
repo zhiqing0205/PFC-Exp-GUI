@@ -199,14 +199,34 @@ QComboBox {
   background: #101010;
   border: 1px solid #2E2E2E;
   border-radius: 10px;
-  padding: 6px 10px;
+  padding: 6px 34px 6px 10px;
 }
 QComboBox:focus {
   border: 1px solid #4080FF;
 }
 QComboBox::drop-down {
-  border: 0px;
-  width: 26px;
+  subcontrol-origin: padding;
+  subcontrol-position: top right;
+  width: 30px;
+  border-left: 1px solid #2E2E2E;
+}
+QComboBox::down-arrow {
+  image: url(:/icons/chevron-down.svg);
+  width: 12px;
+  height: 12px;
+}
+QComboBox[kind="mode"] {
+  background: #0F1718;
+  border: 1px solid #1F3B3A;
+}
+QComboBox[kind="mode"]::drop-down {
+  border-left: 1px solid #1F3B3A;
+}
+QComboBox[kind="mode"]:hover {
+  border-color: #14B8A6;
+}
+QComboBox[kind="mode"]:focus {
+  border-color: #14B8A6;
 }
 QComboBox QAbstractItemView {
   background: #101010;

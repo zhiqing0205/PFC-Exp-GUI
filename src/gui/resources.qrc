@@ -1,6 +1,6 @@
 <RCC>
   <qresource prefix="/">
     <file>icons/check.svg</file>
+    <file>icons/chevron-down.svg</file>
   </qresource>
 </RCC>
-

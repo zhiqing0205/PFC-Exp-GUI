@@ -332,6 +332,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         name->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
 
         p.mode = new QComboBox;
+        p.mode->setProperty("kind", "mode");
         p.mode->addItem("Fixed", 0);
         p.mode->addItem("Range", 1);
         p.mode->addItem("List", 2);
@@ -412,6 +413,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         name->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
 
         p.mode = new QComboBox;
+        p.mode->setProperty("kind", "mode");
         p.mode->addItem("Fixed", 0);
         p.mode->addItem("Range", 1);
         p.mode->addItem("List", 2);
