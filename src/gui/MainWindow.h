@@ -21,8 +21,6 @@ class QStackedWidget;
 class QTabWidget;
 class QTableWidget;
 
-class PlotWidget;
-
 struct RunParams {
     double u0 = 0.05;
     double con0 = 0.2;
@@ -80,7 +78,6 @@ private:
     void setResultsDir(const QString& dirPath);
     void refreshResultsFileList();
     void loadResultsFile(const QString& filePath);
-    void applyResultsYColumn(int columnIndex);
     void renderResultsImage();
     void fitResultsImage();
     void exportResultsImage();
@@ -145,12 +142,10 @@ private:
 
     // Results/visualization widgets
     QLineEdit* resultsDir_ = nullptr;
+    QLabel* resultsStatus_ = nullptr;
     QListWidget* resultsFiles_ = nullptr;
     QTabWidget* resultsViewTabs_ = nullptr;
-    QWidget* resultsImagePage_ = nullptr;
-    QComboBox* resultsYColumn_ = nullptr;
-    QLabel* resultsInfo_ = nullptr;
-    PlotWidget* resultsPlot_ = nullptr;
+    QWidget* resultsPlotPage_ = nullptr;
     QTableWidget* resultsTable_ = nullptr;
     QComboBox* resultsImageValue_ = nullptr;
     QSpinBox* resultsImagePointSize_ = nullptr;

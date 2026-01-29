@@ -1,7 +1,5 @@
 #include "MainWindow.h"
 
-#include "PlotWidget.h"
-
 #include <QCheckBox>
 #include <QComboBox>
 #include <QCoreApplication>
@@ -143,6 +141,19 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     tabs->addTab(manufacturingScroll, "Manufacturing");
     tabs->addTab(transformationScroll, "Transformation");
     tabs->addTab(mechanicsScroll, "Stress–Strain");
+
+    connect(tabs, &QTabWidget::currentChanged, this, [this, tabs, resultsScroll](int) {
+        if (!resultsScroll) return;
+        if (tabs->currentWidget() != resultsScroll) return;
+        if (!resultsDir_ || !resultsFiles_) return;
+
+        const QString current = resultsDir_->text().trimmed();
+        if (!currentOutputDir_.isEmpty() && current != currentOutputDir_) {
+            setResultsDir(currentOutputDir_);
+            return;
+        }
+        refreshResultsFileList();
+    });
 
     log_ = new QPlainTextEdit;
     log_->setReadOnly(true);
@@ -560,10 +571,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resultsTab->setLayout(resultsLayout);
 
     auto* resultsHint = new QLabel(
-        "Select an output run directory to visualize numeric data in *.txt files.\n"
+        "Select an output run directory to inspect numeric data in *.txt files.\n"
         "Tips:\n"
-        "• energy.txt / phimax.txt: use Plot (x=step)\n"
-        "• Phimax_*.txt: use Image to render a 2D snapshot (Ctrl+wheel to zoom)");
+        "• Phimax_*.txt (and related snapshots): use Plot to render a 2D heatmap (Ctrl+wheel to zoom)\n"
+        "• Other *.txt: use Table to inspect raw columns");
     resultsHint->setProperty("hint", true);
     resultsHint->setWordWrap(true);
     resultsLayout->addWidget(resultsHint);
@@ -591,6 +602,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resultsDirBox->setLayout(resultsDirRow);
     resultsLayout->addWidget(resultsDirBox);
 
+    resultsStatus_ = new QLabel("Using current output directory when available.");
+    resultsStatus_->setProperty("hint", true);
+    resultsStatus_->setWordWrap(true);
+    resultsLayout->addWidget(resultsStatus_);
+
     auto* resultsSplit = new QSplitter(Qt::Horizontal);
     resultsSplit->setHandleWidth(10);
     resultsSplit->setChildrenCollapsible(false);
@@ -606,31 +622,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resultsViewTabs_ = new QTabWidget;
     resultsViewTabs_->setDocumentMode(true);
 
-    auto* plotPage = new QWidget;
-    auto* plotLayout = new QVBoxLayout;
-    plotLayout->setContentsMargins(0, 0, 0, 0);
-    plotLayout->setSpacing(10);
-
-    auto* plotTopRow = new QWidget;
-    auto* plotTopLayout = new QHBoxLayout;
-    plotTopLayout->setContentsMargins(0, 0, 0, 0);
-    plotTopLayout->addWidget(new QLabel("Y column"));
-    resultsYColumn_ = new QComboBox;
-    resultsYColumn_->setMinimumWidth(180);
-    plotTopLayout->addWidget(resultsYColumn_);
-    plotTopLayout->addStretch(1);
-    plotTopRow->setLayout(plotTopLayout);
-
-    resultsPlot_ = new PlotWidget;
-    resultsInfo_ = new QLabel("Pick a file to visualize.");
-    resultsInfo_->setProperty("hint", true);
-    resultsInfo_->setWordWrap(true);
-
-    plotLayout->addWidget(plotTopRow);
-    plotLayout->addWidget(resultsPlot_, 1);
-    plotLayout->addWidget(resultsInfo_);
-    plotPage->setLayout(plotLayout);
-
     auto* tablePage = new QWidget;
     auto* tableLayout = new QVBoxLayout;
     tableLayout->setContentsMargins(0, 0, 0, 0);
@@ -642,38 +633,38 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     tableLayout->addWidget(resultsTable_);
     tablePage->setLayout(tableLayout);
 
-    auto* imagePage = new QWidget;
-    auto* imageLayout = new QVBoxLayout;
-    imageLayout->setContentsMargins(0, 0, 0, 0);
-    imageLayout->setSpacing(10);
+    auto* plotPage = new QWidget;
+    auto* plotLayout = new QVBoxLayout;
+    plotLayout->setContentsMargins(0, 0, 0, 0);
+    plotLayout->setSpacing(10);
 
-    auto* imageTopRow = new QWidget;
-    auto* imageTopLayout = new QHBoxLayout;
-    imageTopLayout->setContentsMargins(0, 0, 0, 0);
-    imageTopLayout->addWidget(new QLabel("Value"));
+    auto* plotTopRow = new QWidget;
+    auto* plotTopLayout = new QHBoxLayout;
+    plotTopLayout->setContentsMargins(0, 0, 0, 0);
+    plotTopLayout->addWidget(new QLabel("Value"));
     resultsImageValue_ = new QComboBox;
     resultsImageValue_->setMinimumWidth(180);
     resultsImageValue_->setEnabled(false);
-    imageTopLayout->addWidget(resultsImageValue_);
-    imageTopLayout->addWidget(new QLabel("Smooth σ (px)"));
+    plotTopLayout->addWidget(resultsImageValue_);
+    plotTopLayout->addWidget(new QLabel("Smooth σ (px)"));
     resultsImagePointSize_ = makeIntSpin(1, 64, 16, 1);
     resultsImagePointSize_->setToolTip("Gaussian smoothing radius (σ). Higher values create smoother heatmaps.");
     resultsImagePointSize_->setEnabled(false);
-    imageTopLayout->addWidget(resultsImagePointSize_);
-    imageTopLayout->addStretch(1);
+    plotTopLayout->addWidget(resultsImagePointSize_);
+    plotTopLayout->addStretch(1);
 
     auto* imageFit = new QToolButton;
     imageFit->setText("Fit");
     imageFit->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     imageFit->setIcon(style()->standardIcon(QStyle::SP_DesktopIcon));
-    imageTopLayout->addWidget(imageFit);
+    plotTopLayout->addWidget(imageFit);
 
     auto* imageExport = new QToolButton;
     imageExport->setText("Export PNG…");
     imageExport->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     imageExport->setIcon(style()->standardIcon(QStyle::SP_DialogSaveButton));
-    imageTopLayout->addWidget(imageExport);
-    imageTopRow->setLayout(imageTopLayout);
+    plotTopLayout->addWidget(imageExport);
+    plotTopRow->setLayout(plotTopLayout);
 
     resultsImageInfo_ = new QLabel("Select a Phimax_*.txt snapshot file to render.");
     resultsImageInfo_->setProperty("hint", true);
@@ -690,15 +681,18 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resultsImageView_->setResizeAnchor(QGraphicsView::AnchorUnderMouse);
     resultsImageItem_ = resultsImageScene_->addPixmap(QPixmap());
 
-    imageLayout->addWidget(imageTopRow);
-    imageLayout->addWidget(resultsImageView_, 1);
-    imageLayout->addWidget(resultsImageInfo_);
-    imagePage->setLayout(imageLayout);
-    resultsImagePage_ = imagePage;
+    plotLayout->addWidget(plotTopRow);
+    plotLayout->addWidget(resultsImageView_, 1);
+    plotLayout->addWidget(resultsImageInfo_);
+    plotPage->setLayout(plotLayout);
+    resultsPlotPage_ = plotPage;
 
     resultsViewTabs_->addTab(plotPage, "Plot");
     resultsViewTabs_->addTab(tablePage, "Table");
-    resultsViewTabs_->addTab(imagePage, "Image");
+    const int plotTab = resultsViewTabs_->indexOf(plotPage);
+    resultsViewTabs_->setTabEnabled(plotTab, false);
+    if (resultsViewTabs_->tabBar()) resultsViewTabs_->tabBar()->setTabVisible(plotTab, false);
+    resultsViewTabs_->setCurrentWidget(tablePage);
 
     resultsSplit->addWidget(filesBox);
     resultsSplit->addWidget(resultsViewTabs_);
@@ -723,11 +717,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         const QString dir = resultsDir_ ? resultsDir_->text().trimmed() : QString();
         if (dir.isEmpty()) return;
         loadResultsFile(QDir(dir).filePath(fileName));
-    });
-    connect(resultsYColumn_, &QComboBox::currentIndexChanged, this, [this](int) {
-        if (!resultsYColumn_) return;
-        const int col = resultsYColumn_->currentData().toInt();
-        applyResultsYColumn(col);
     });
 
     connect(resultsImageValue_, &QComboBox::currentIndexChanged, this, [this](int) { renderResultsImage(); });
@@ -856,7 +845,7 @@ void MainWindow::setResultsDir(const QString& dirPath) {
 }
 
 void MainWindow::refreshResultsFileList() {
-    if (!resultsDir_ || !resultsFiles_ || !resultsInfo_ || !resultsPlot_ || !resultsYColumn_ || !resultsTable_) return;
+    if (!resultsDir_ || !resultsStatus_ || !resultsFiles_ || !resultsViewTabs_ || !resultsTable_) return;
 
     const QString prev = resultsFiles_->currentItem() ? resultsFiles_->currentItem()->text() : QString();
 
@@ -864,13 +853,21 @@ void MainWindow::refreshResultsFileList() {
     resultsCurrentFile_.clear();
     resultsImageEnabled_ = false;
     resultsColumns_.clear();
-    resultsPlot_->clear();
-    resultsInfo_->setText("Pick a file to visualize.");
-    resultsYColumn_->clear();
-    resultsYColumn_->setEnabled(false);
     resultsTable_->clear();
     resultsTable_->setRowCount(0);
     resultsTable_->setColumnCount(0);
+    if (resultsPlotPage_) {
+        const int plotTab = resultsViewTabs_->indexOf(resultsPlotPage_);
+        if (plotTab >= 0) {
+            resultsViewTabs_->setTabEnabled(plotTab, false);
+            if (resultsViewTabs_->tabBar()) resultsViewTabs_->tabBar()->setTabVisible(plotTab, false);
+        }
+    }
+    if (resultsViewTabs_->count() > 0) {
+        const int plotTab = resultsPlotPage_ ? resultsViewTabs_->indexOf(resultsPlotPage_) : -1;
+        const int tableTab = (plotTab == 0) ? 1 : 0;
+        if (tableTab >= 0 && tableTab < resultsViewTabs_->count()) resultsViewTabs_->setCurrentIndex(tableTab);
+    }
     if (resultsImageValue_) {
         resultsImageValue_->clear();
         resultsImageValue_->setEnabled(false);
@@ -890,18 +887,18 @@ void MainWindow::refreshResultsFileList() {
 
     const QString dirPath = resultsDir_->text().trimmed();
     if (dirPath.isEmpty()) {
-        resultsInfo_->setText("Run directory is empty.");
+        resultsStatus_->setText("Run directory is empty.");
         return;
     }
     QDir dir(dirPath);
     if (!dir.exists()) {
-        resultsInfo_->setText("Directory not found: " + dirPath);
+        resultsStatus_->setText("Directory not found: " + dirPath);
         return;
     }
 
     const QStringList files = dir.entryList(QStringList() << "*.txt", QDir::Files, QDir::Name);
     if (files.isEmpty()) {
-        resultsInfo_->setText("No .txt files found in: " + dirPath);
+        resultsStatus_->setText("No .txt files found in: " + dirPath);
         return;
     }
 
@@ -911,7 +908,7 @@ void MainWindow::refreshResultsFileList() {
         resultsFiles_->addItem(item);
     }
 
-    resultsInfo_->setText(QString("Found %1 .txt file(s). Select one to visualize.").arg(files.size()));
+    resultsStatus_->setText(QString("Found %1 .txt file(s). Select one to inspect.").arg(files.size()));
 
     if (!prev.isEmpty()) {
         const QList<QListWidgetItem*> matches = resultsFiles_->findItems(prev, Qt::MatchExactly);
@@ -937,17 +934,26 @@ static QVector<double> extractNumbersFromLine(const QString& line) {
 }
 
 void MainWindow::loadResultsFile(const QString& filePath) {
-    if (!resultsInfo_ || !resultsPlot_ || !resultsYColumn_ || !resultsTable_) return;
+    if (!resultsStatus_ || !resultsViewTabs_ || !resultsTable_) return;
 
     resultsCurrentFile_ = filePath;
     resultsImageEnabled_ = false;
     resultsColumns_.clear();
-    resultsPlot_->clear();
-    resultsYColumn_->clear();
-    resultsYColumn_->setEnabled(false);
     resultsTable_->clear();
     resultsTable_->setRowCount(0);
     resultsTable_->setColumnCount(0);
+    if (resultsPlotPage_) {
+        const int plotTab = resultsViewTabs_->indexOf(resultsPlotPage_);
+        if (plotTab >= 0) {
+            resultsViewTabs_->setTabEnabled(plotTab, false);
+            if (resultsViewTabs_->tabBar()) resultsViewTabs_->tabBar()->setTabVisible(plotTab, false);
+        }
+    }
+    if (resultsViewTabs_->count() > 0) {
+        const int plotTab = resultsPlotPage_ ? resultsViewTabs_->indexOf(resultsPlotPage_) : -1;
+        const int tableTab = (plotTab == 0) ? 1 : 0;
+        if (tableTab >= 0 && tableTab < resultsViewTabs_->count()) resultsViewTabs_->setCurrentIndex(tableTab);
+    }
     if (resultsImageValue_) {
         resultsImageValue_->clear();
         resultsImageValue_->setEnabled(false);
@@ -964,7 +970,7 @@ void MainWindow::loadResultsFile(const QString& filePath) {
 
     QFile f(filePath);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        resultsInfo_->setText("Failed to open: " + filePath);
+        resultsStatus_->setText("Failed to open: " + filePath);
         return;
     }
 
@@ -1010,7 +1016,7 @@ void MainWindow::loadResultsFile(const QString& filePath) {
     }
 
     if (rows.isEmpty() || maxCols <= 0) {
-        resultsInfo_->setText("No numeric data found in: " + name);
+        resultsStatus_->setText("No numeric data found in: " + name);
         return;
     }
 
@@ -1024,10 +1030,6 @@ void MainWindow::loadResultsFile(const QString& filePath) {
 
     resultsTable_->setRowCount(rows.size());
     resultsTable_->setColumnCount(maxCols);
-    QStringList headers;
-    headers.reserve(maxCols);
-    for (int c = 0; c < maxCols; ++c) headers << QString("col%1").arg(c);
-    resultsTable_->setHorizontalHeaderLabels(headers);
     for (int r = 0; r < rows.size(); ++r) {
         for (int c = 0; c < maxCols; ++c) {
             const double v = (c < rows[r].size()) ? rows[r][c] : nan;
@@ -1065,76 +1067,43 @@ void MainWindow::loadResultsFile(const QString& filePath) {
         return QString("col%1").arg(c);
     };
 
+    QStringList headers;
+    headers.reserve(maxCols);
+    for (int c = 0; c < maxCols; ++c) headers << colLabel(c);
+    resultsTable_->setHorizontalHeaderLabels(headers);
+
     if (isPhimaxSnapshot) {
         if (resultsImageValue_) {
             resultsImageValue_->clear();
-            if (maxCols >= 4) resultsImageValue_->addItem("phimax (col3)", 3);
-            if (maxCols >= 5) resultsImageValue_->addItem("con (col4)", 4);
-            if (maxCols >= 6) resultsImageValue_->addItem("q4 (col5)", 5);
-            if (maxCols >= 7) resultsImageValue_->addItem("q6 (col6)", 6);
+            if (maxCols >= 4) resultsImageValue_->addItem("phimax", 3);
+            if (maxCols >= 5) resultsImageValue_->addItem("con", 4);
+            if (maxCols >= 6) resultsImageValue_->addItem("q4", 5);
+            if (maxCols >= 7) resultsImageValue_->addItem("q6", 6);
             resultsImageValue_->setEnabled(resultsImageValue_->count() > 0);
         }
         if (resultsImagePointSize_) {
             resultsImagePointSize_->setEnabled(true);
         }
         resultsImageEnabled_ = resultsImageValue_ && (resultsImageValue_->count() > 0);
-        resultsInfo_->setText(QString("%1 • %2 row(s) • %3 col(s) • use Image tab").arg(name).arg(rows.size()).arg(maxCols));
-        if (resultsViewTabs_ && resultsImagePage_) resultsViewTabs_->setCurrentWidget(resultsImagePage_);
+        if (resultsPlotPage_) {
+            const int plotTab = resultsViewTabs_->indexOf(resultsPlotPage_);
+            if (plotTab >= 0) {
+                resultsViewTabs_->setTabEnabled(plotTab, true);
+                if (resultsViewTabs_->tabBar()) resultsViewTabs_->tabBar()->setTabVisible(plotTab, true);
+            }
+        }
+        resultsStatus_->setText(QString("%1 • %2 row(s) • %3 col(s) • use Plot tab").arg(name).arg(rows.size()).arg(maxCols));
+        if (resultsPlotPage_) resultsViewTabs_->setCurrentWidget(resultsPlotPage_);
         renderResultsImage();
         return;
     }
 
-    resultsYColumn_->clear();
-    if (maxCols <= 1) {
-        resultsYColumn_->addItem(colLabel(0), 0);
-        resultsYColumn_->setEnabled(false);
-        resultsInfo_->setText(QString("%1 • %2 row(s) • %3 col(s)").arg(name).arg(rows.size()).arg(maxCols));
-        applyResultsYColumn(0);
-        return;
+    resultsStatus_->setText(QString("%1 • %2 row(s) • %3 col(s) • table only").arg(name).arg(rows.size()).arg(maxCols));
+    if (resultsViewTabs_->count() > 0) {
+        const int plotTab = resultsPlotPage_ ? resultsViewTabs_->indexOf(resultsPlotPage_) : -1;
+        const int tableTab = (plotTab == 0) ? 1 : 0;
+        if (tableTab >= 0 && tableTab < resultsViewTabs_->count()) resultsViewTabs_->setCurrentIndex(tableTab);
     }
-
-    for (int c = 1; c < maxCols; ++c) {
-        resultsYColumn_->addItem(colLabel(c) + QString(" (col%1)").arg(c), c);
-    }
-    resultsYColumn_->setEnabled(true);
-    resultsYColumn_->setCurrentIndex(0);
-
-    resultsInfo_->setText(QString("%1 • %2 row(s) • %3 col(s) • x=%4").arg(name).arg(rows.size()).arg(maxCols).arg(colLabel(0)));
-    applyResultsYColumn(resultsYColumn_->currentData().toInt());
-}
-
-void MainWindow::applyResultsYColumn(int columnIndex) {
-    if (!resultsPlot_ || resultsColumns_.isEmpty()) return;
-
-    const int cols = resultsColumns_.size();
-    const int n = resultsColumns_.at(0).size();
-    if (n <= 0) {
-        resultsPlot_->clear();
-        return;
-    }
-
-    QVector<double> xs;
-    QVector<double> ys;
-    xs.reserve(n);
-    ys.reserve(n);
-
-    QString yLabel;
-    if (cols <= 1) {
-        for (int i = 0; i < n; ++i) {
-            xs.push_back(i);
-            ys.push_back(resultsColumns_.at(0).at(i));
-        }
-        yLabel = "value";
-    } else {
-        const int ycol = std::clamp(columnIndex, 1, cols - 1);
-        for (int i = 0; i < n; ++i) {
-            xs.push_back(resultsColumns_.at(0).at(i));
-            ys.push_back(resultsColumns_.at(ycol).at(i));
-        }
-        yLabel = QString("col%1").arg(ycol);
-    }
-
-    resultsPlot_->setData(std::move(xs), std::move(ys), yLabel);
 }
 
 static QColor jetLikeColor(double t) {
