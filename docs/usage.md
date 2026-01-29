@@ -36,15 +36,12 @@ Batch Sweep 支持对 `u0 / con0 / steps` 设置区间与步长，并按笛卡�
 - `run_config.txt`：CLI 写入的运行参数
 - `phi_*.vti / con_*.vti / *.pvti` 等（实验程序输出）
 
-## 4. TXT 可视化（TXT Visualizer）
+## 4. 可视化（Visualizer）
 
-GUI 提供 `TXT Visualizer` 标签页，用于快速查看输出目录中的 `*.txt`：
+GUI 提供 `Visualizer` 标签页，用于快速查看输出目录中的 `*.txt`。打开该标签页时，会默认切换到当前运行的输出目录（Current Output），左侧自动加载该目录下的 `*.txt` 文件列表。
 
-1. 打开 `TXT Visualizer`。
-2. 在 `Run directory` 选择某个 run 的输出目录。
-3. 左侧选择 `*.txt` 文件：
-   - `energy.txt` / `checkpoint_timestamps.txt`：右侧使用 `Plot`（默认第 0 列为 x）。
-   - `Phimax_*.txt`（或 `Phimaxq4q6_*.txt`）：右侧切到 `Image` 渲染二维快照（支持 `Ctrl+滚轮` 缩放、可导出 PNG）。
+- 普通 `*.txt`（如能量、时间戳等日志类输出）：默认使用 `Table` 查看原始数值列。
+- `Phimax_*.txt` / `Phimaxq4q6_*.txt` 等二维快照：会启用 `Plot`（热图）渲染，可 `Ctrl+滚轮` 缩放，支持 `Fit` 与 `Export PNG…` 导出图片。
 
 ## 5. macOS 常见问题
 
