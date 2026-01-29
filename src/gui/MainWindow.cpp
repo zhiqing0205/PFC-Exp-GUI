@@ -54,20 +54,6 @@
 #include <cstring>
 #include <limits>
 
-#ifndef PFC_GRID_L
-#define PFC_GRID_L 256
-#endif
-#ifndef PFC_GRID_M
-#define PFC_GRID_M 256
-#endif
-#ifndef PFC_GRID_N
-#define PFC_GRID_N 1
-#endif
-
-static constexpr int kGridL = PFC_GRID_L;
-static constexpr int kGridM = PFC_GRID_M;
-static constexpr int kGridN = PFC_GRID_N;
-
 static QDoubleSpinBox* makeDoubleSpin(double min, double max, double value, int decimals, double step) {
     auto* box = new QDoubleSpinBox;
     box->setRange(min, max);
@@ -214,10 +200,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     singleSteps_ = makeIntSpin(1, 100000000, 200, 10);
     singleMod_ = makeIntSpin(1, 100000000, 25, 1);
     singleSeed_ = makeIntSpin(0, 2147483647, 20200604, 1);
-    singleGrainX_ = makeIntSpin(1, std::max(1, kGridL), std::min(16, std::max(1, kGridL)), 1);
-    singleGrainY_ = makeIntSpin(1, std::max(1, kGridM), std::min(16, std::max(1, kGridM)), 1);
-    singleGrainZ_ = makeIntSpin(1, std::max(1, kGridN), std::min(1, std::max(1, kGridN)), 1);
-    singleAxx_ = makeDoubleSpin(0.0, 1000.0, 0.0, 6, 0.1);
 
     auto addSingleParam = [&](int row, int colPair, const QString& labelText, QWidget* editor) {
         auto* label = new QLabel(labelText);
@@ -226,18 +208,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         singleParamsGrid->addWidget(editor, row, colPair * 2 + 1);
     };
 
-    addSingleParam(0, 0, "u0 (density)", singleU0_);
-    addSingleParam(0, 1, "con0 (concentration)", singleCon0_);
+    addSingleParam(0, 0, "u0", singleU0_);
+    addSingleParam(0, 1, "con0", singleCon0_);
     addSingleParam(1, 0, "sig", singleSig_);
     addSingleParam(1, 1, "seed", singleSeed_);
     addSingleParam(2, 0, "dt", singleDt_);
     addSingleParam(2, 1, "dx", singleDx_);
     addSingleParam(3, 0, "steps", singleSteps_);
     addSingleParam(3, 1, "mod", singleMod_);
-    addSingleParam(4, 0, "grainx", singleGrainX_);
-    addSingleParam(4, 1, "grainy", singleGrainY_);
-    addSingleParam(5, 0, "grainz", singleGrainZ_);
-    addSingleParam(5, 1, "axx (noise)", singleAxx_);
 
     singleParamsBox->setLayout(singleParamsGrid);
 
@@ -499,8 +477,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     };
 
     // Order matters for the Cartesian product (outer -> inner).
-    addDoubleParam("u0", "u0 (density)", -2.0, 2.0, 0.05, 6, 0.01);
-    addDoubleParam("con0", "con0 (concentration)", 0.0, 1.0, 0.2, 6, 0.01);
+    addDoubleParam("u0", "u0", -2.0, 2.0, 0.05, 6, 0.01);
+    addDoubleParam("con0", "con0", 0.0, 1.0, 0.2, 6, 0.01);
     addDoubleParam("sig", "sig", 0.0, 2.0, 0.05, 6, 0.01);
     addDoubleParam("dt", "dt", 1e-6, 1.0, 0.05, 6, 0.01);
     addDoubleParam("dx", "dx", 1e-6, 10.0, 0.125, 6, 0.01);
@@ -508,12 +486,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     addIntParam("steps", "steps", 1, 100000000, 200, 10, "e.g. 100,200,300");
     addIntParam("mod", "mod", 1, 100000000, 25, 1, "e.g. 25,50,100");
     addIntParam("seed", "seed", 0, 2147483647, 20200604, 1, "e.g. 1,2,3");
-
-    addIntParam("grainx", "grainx", 1, std::max(1, kGridL), std::min(16, std::max(1, kGridL)), 1, "e.g. 8,16,32");
-    addIntParam("grainy", "grainy", 1, std::max(1, kGridM), std::min(16, std::max(1, kGridM)), 1, "e.g. 8,16,32");
-    addIntParam("grainz", "grainz", 1, std::max(1, kGridN), std::min(1, std::max(1, kGridN)), 1, "e.g. 1");
-
-    addDoubleParam("axx", "axx (noise)", 0.0, 1000.0, 0.0, 6, 0.1);
 
     batchParamsBox->setLayout(batchParamsGrid);
 
@@ -1524,10 +1496,6 @@ RunParams MainWindow::singleParams() const {
     p.steps = singleSteps_->value();
     p.mod = singleMod_->value();
     p.seed = singleSeed_->value();
-    p.grainx = singleGrainX_->value();
-    p.grainy = singleGrainY_->value();
-    p.grainz = singleGrainZ_->value();
-    p.axx = singleAxx_->value();
     return p;
 }
 
@@ -1542,10 +1510,6 @@ QStringList MainWindow::buildArgs(const RunParams& params, const QString& outDir
     args << "--steps" << QString::number(params.steps);
     args << "--mod" << QString::number(params.mod);
     args << "--seed" << QString::number(params.seed);
-    args << "--grainx" << QString::number(params.grainx);
-    args << "--grainy" << QString::number(params.grainy);
-    args << "--grainz" << QString::number(params.grainz);
-    args << "--axx" << f(params.axx);
     args << "--outdir" << outDir;
     return args;
 }
@@ -1566,10 +1530,6 @@ bool MainWindow::writeParamsJson(const RunJob& job, QString* errorOut) const {
     p["steps"] = job.params.steps;
     p["mod"] = job.params.mod;
     p["seed"] = job.params.seed;
-    p["grainx"] = job.params.grainx;
-    p["grainy"] = job.params.grainy;
-    p["grainz"] = job.params.grainz;
-    p["axx"] = job.params.axx;
     obj["params"] = p;
 
     const QString path = QDir(job.outDir).filePath("params.json");
@@ -1818,15 +1778,11 @@ QVector<RunJob> MainWindow::buildBatchJobs(const QString& baseDir, const QString
         else if (key == "sig") rp.sig = v;
         else if (key == "dt") rp.dt = v;
         else if (key == "dx") rp.dx = v;
-        else if (key == "axx") rp.axx = v;
     };
     auto applyParamInt = [](RunParams& rp, const QString& key, int v) {
         if (key == "steps") rp.steps = v;
         else if (key == "mod") rp.mod = v;
         else if (key == "seed") rp.seed = v;
-        else if (key == "grainx") rp.grainx = v;
-        else if (key == "grainy") rp.grainy = v;
-        else if (key == "grainz") rp.grainz = v;
     };
 
     QVector<int> indices;
@@ -1874,29 +1830,6 @@ void MainWindow::setRunningUi(bool running) {
 
 void MainWindow::launchJob(const RunJob& job) {
     RunJob actual = job;
-    {
-        const int maxX = std::max(1, kGridL);
-        const int maxY = std::max(1, kGridM);
-        const int maxZ = std::max(1, kGridN);
-        const int beforeX = actual.params.grainx;
-        const int beforeY = actual.params.grainy;
-        const int beforeZ = actual.params.grainz;
-        actual.params.grainx = std::clamp(actual.params.grainx, 1, maxX);
-        actual.params.grainy = std::clamp(actual.params.grainy, 1, maxY);
-        actual.params.grainz = std::clamp(actual.params.grainz, 1, maxZ);
-        if (beforeX != actual.params.grainx || beforeY != actual.params.grainy || beforeZ != actual.params.grainz) {
-            appendLog(QString("=== Note: grain counts clamped to grid: (%1,%2,%3) -> (%4,%5,%6), grid=(%7,%8,%9) ===")
-                          .arg(beforeX)
-                          .arg(beforeY)
-                          .arg(beforeZ)
-                          .arg(actual.params.grainx)
-                          .arg(actual.params.grainy)
-                          .arg(actual.params.grainz)
-                          .arg(kGridL)
-                          .arg(kGridM)
-                          .arg(kGridN));
-        }
-    }
 
     QString err;
     if (!ensureDir(actual.outDir, &err)) {

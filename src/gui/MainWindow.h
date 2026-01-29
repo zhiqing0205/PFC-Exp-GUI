@@ -32,10 +32,6 @@ struct RunParams {
     int steps = 200;
     int mod = 25;
     int seed = 20200604;
-    int grainx = 16;
-    int grainy = 16;
-    int grainz = 1;
-    double axx = 0.0;
 };
 
 struct RunJob {
@@ -110,10 +106,6 @@ private:
     QSpinBox* singleSteps_ = nullptr;
     QSpinBox* singleMod_ = nullptr;
     QSpinBox* singleSeed_ = nullptr;
-    QSpinBox* singleGrainX_ = nullptr;
-    QSpinBox* singleGrainY_ = nullptr;
-    QSpinBox* singleGrainZ_ = nullptr;
-    QDoubleSpinBox* singleAxx_ = nullptr;
     QLineEdit* singleBaseOutDir_ = nullptr;
     QLineEdit* singleRunName_ = nullptr;
 
