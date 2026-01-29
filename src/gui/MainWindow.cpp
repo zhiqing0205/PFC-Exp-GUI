@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDesktopServices>
+#include <QDialog>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
@@ -69,6 +70,29 @@ static QSpinBox* makeIntSpin(int min, int max, int value, int step) {
     box->setValue(value);
     box->setKeyboardTracking(false);
     return box;
+}
+
+static QString pickExistingDirectory(QWidget* parent, const QString& caption, const QString& baseDir) {
+    QFileDialog dlg(parent, caption, baseDir);
+    dlg.setFileMode(QFileDialog::Directory);
+    dlg.setOption(QFileDialog::ShowDirsOnly, true);
+    dlg.setOption(QFileDialog::DontUseNativeDialog, true);
+    if (dlg.exec() != QDialog::Accepted) return QString();
+    const QStringList selected = dlg.selectedFiles();
+    if (selected.isEmpty()) return QString();
+    return selected.first();
+}
+
+static QString pickSavePngFile(QWidget* parent, const QString& caption, const QString& suggestedPath) {
+    QFileDialog dlg(parent, caption, suggestedPath);
+    dlg.setAcceptMode(QFileDialog::AcceptSave);
+    dlg.setNameFilter("PNG Image (*.png)");
+    dlg.setDefaultSuffix("png");
+    dlg.setOption(QFileDialog::DontUseNativeDialog, true);
+    if (dlg.exec() != QDialog::Accepted) return QString();
+    const QStringList selected = dlg.selectedFiles();
+    if (selected.isEmpty()) return QString();
+    return selected.first();
 }
 
 class ZoomableGraphicsView final : public QGraphicsView {
@@ -703,11 +727,20 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resultsLayout->addWidget(resultsSplit, 1);
 
     connect(resultsBrowse, &QToolButton::clicked, this, [this]() {
+        appendLog("=== Visualizer: Browse clicked ===");
         const QString base = resultsDir_ ? resultsDir_->text() : defaultBaseOutputDir();
-        const QString dir = QFileDialog::getExistingDirectory(this, "Select run directory", base);
-        if (!dir.isEmpty()) setResultsDir(dir);
+        const QString dir = pickExistingDirectory(this, "Select run directory", base);
+        if (dir.isEmpty()) {
+            appendLog("=== Visualizer: Browse cancelled ===");
+            return;
+        }
+        appendLog("=== Visualizer: Browse selected: " + dir + " ===");
+        setResultsDir(dir);
     });
-    connect(resultsRefresh, &QToolButton::clicked, this, [this]() { refreshResultsFileList(); });
+    connect(resultsRefresh, &QToolButton::clicked, this, [this]() {
+        appendLog("=== Visualizer: Refresh clicked ===");
+        refreshResultsFileList();
+    });
     connect(resultsUseCurrent, &QPushButton::clicked, this, [this]() {
         if (!currentOutputDir_.isEmpty()) setResultsDir(currentOutputDir_);
     });
@@ -721,8 +754,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     connect(resultsImageValue_, &QComboBox::currentIndexChanged, this, [this](int) { renderResultsImage(); });
     connect(resultsImagePointSize_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int) { renderResultsImage(); });
-    connect(imageFit, &QToolButton::clicked, this, [this]() { fitResultsImage(); });
-    connect(imageExport, &QToolButton::clicked, this, [this]() { exportResultsImage(); });
+    connect(imageFit, &QToolButton::clicked, this, [this]() {
+        appendLog("=== Visualizer: Fit clicked ===");
+        fitResultsImage();
+    });
+    connect(imageExport, &QToolButton::clicked, this, [this]() {
+        appendLog("=== Visualizer: Export PNG clicked ===");
+        exportResultsImage();
+    });
 
     // ---------- Roadmap tabs (placeholders) ----------
     auto setupRoadmapTab = [](QWidget* tab, const QString& title, const QString& desc, const QStringList& bullets) {
@@ -977,6 +1016,127 @@ void MainWindow::loadResultsFile(const QString& filePath) {
     const QString name = QFileInfo(filePath).fileName();
     const QString base = name.toLower();
     const bool isPhimaxSnapshot = base.startsWith("phimax_") || base.startsWith("phimaxq4q6_") || base.startsWith("phimaxq");
+
+    if (base == "run_config.txt") {
+        QTextStream in(&f);
+        struct Row {
+            QString key;
+            QString value;
+        };
+        QVector<Row> rows;
+        rows.reserve(64);
+        while (!in.atEnd()) {
+            const QString line = in.readLine().trimmed();
+            if (line.isEmpty()) continue;
+            if (line.startsWith('#')) continue;
+            const QStringList parts = line.split(QRegularExpression(R"(\s+)"), Qt::SkipEmptyParts);
+            if (parts.isEmpty()) continue;
+            const QString key = parts.value(0);
+            const QString value = parts.mid(1).join(' ');
+            rows.push_back(Row{key, value});
+        }
+
+        if (rows.isEmpty()) {
+            resultsStatus_->setText("No config entries found in: " + name);
+            return;
+        }
+
+        resultsTable_->setRowCount(rows.size());
+        resultsTable_->setColumnCount(2);
+        resultsTable_->setHorizontalHeaderLabels(QStringList() << "key" << "value");
+        for (int r = 0; r < rows.size(); ++r) {
+            auto* keyItem = new QTableWidgetItem(rows[r].key);
+            auto* valItem = new QTableWidgetItem(rows[r].value);
+            valItem->setTextAlignment(Qt::AlignVCenter | Qt::AlignRight);
+            resultsTable_->setItem(r, 0, keyItem);
+            resultsTable_->setItem(r, 1, valItem);
+        }
+        resultsTable_->resizeColumnsToContents();
+        resultsStatus_->setText(QString("%1 • %2 param(s)").arg(name).arg(rows.size()));
+        return;
+    }
+
+    if (base.contains("checkpoint") && base.contains("timestamp")) {
+        QTextStream in(&f);
+        struct Entry {
+            int step = 0;
+            qint64 timestampMs = 0;
+        };
+        QVector<Entry> entries;
+        entries.reserve(128);
+
+        static const QRegularExpression re(R"(step\s+(\d+)\s+timestamp_ms\s+(\d+))",
+                                           QRegularExpression::CaseInsensitiveOption);
+
+        while (!in.atEnd()) {
+            const QString line = in.readLine().trimmed();
+            if (line.isEmpty()) continue;
+            if (line.startsWith('#')) continue;
+
+            auto m = re.match(line);
+            if (m.hasMatch()) {
+                bool ok1 = false;
+                bool ok2 = false;
+                const int step = m.captured(1).toInt(&ok1);
+                const qint64 ts = m.captured(2).toLongLong(&ok2);
+                if (ok1 && ok2) entries.push_back(Entry{step, ts});
+                continue;
+            }
+
+            const QVector<double> nums = extractNumbersFromLine(line);
+            if (nums.size() < 2) continue;
+            const int step = static_cast<int>(nums[0]);
+            const qint64 ts = static_cast<qint64>(nums[1]);
+            entries.push_back(Entry{step, ts});
+        }
+
+        if (entries.isEmpty()) {
+            resultsStatus_->setText("No checkpoint timestamp entries found in: " + name);
+            return;
+        }
+
+        const qint64 t0 = entries.first().timestampMs;
+        resultsTable_->setRowCount(entries.size());
+        resultsTable_->setColumnCount(5);
+        resultsTable_->setHorizontalHeaderLabels(
+            QStringList() << "step"
+                          << "timestamp_ms"
+                          << "datetime"
+                          << "elapsed_s"
+                          << "delta_s");
+
+        qint64 prevTs = 0;
+        for (int r = 0; r < entries.size(); ++r) {
+            const auto& e = entries[r];
+            const QDateTime dt = QDateTime::fromMSecsSinceEpoch(e.timestampMs);
+            const QString dtStr = dt.toString("yyyy-MM-dd HH:mm:ss.zzz");
+            const double elapsedS = static_cast<double>(e.timestampMs - t0) / 1000.0;
+            const QString deltaStr =
+                (r == 0 || prevTs <= 0) ? QString() : QString::number(static_cast<double>(e.timestampMs - prevTs) / 1000.0, 'f', 3);
+
+            auto* stepItem = new QTableWidgetItem(QString::number(e.step));
+            stepItem->setTextAlignment(Qt::AlignVCenter | Qt::AlignRight);
+            auto* tsItem = new QTableWidgetItem(QString::number(e.timestampMs));
+            tsItem->setTextAlignment(Qt::AlignVCenter | Qt::AlignRight);
+            auto* dtItem = new QTableWidgetItem(dtStr);
+            auto* elItem = new QTableWidgetItem(QString::number(elapsedS, 'f', 3));
+            elItem->setTextAlignment(Qt::AlignVCenter | Qt::AlignRight);
+            auto* dItem = new QTableWidgetItem(deltaStr);
+            dItem->setTextAlignment(Qt::AlignVCenter | Qt::AlignRight);
+
+            resultsTable_->setItem(r, 0, stepItem);
+            resultsTable_->setItem(r, 1, tsItem);
+            resultsTable_->setItem(r, 2, dtItem);
+            resultsTable_->setItem(r, 3, elItem);
+            resultsTable_->setItem(r, 4, dItem);
+
+            prevTs = e.timestampMs;
+        }
+        resultsTable_->resizeColumnsToContents();
+        const double totalS = static_cast<double>(entries.last().timestampMs - t0) / 1000.0;
+        resultsStatus_->setText(QString("%1 • %2 checkpoint(s) • total %3 s").arg(name).arg(entries.size()).arg(totalS, 0, 'f', 3));
+        return;
+    }
 
     bool skipKommentarHeader = false;
     {
@@ -1440,6 +1600,7 @@ void MainWindow::fitResultsImage() {
 
 void MainWindow::exportResultsImage() {
     if (!resultsImageItem_ || resultsImageItem_->pixmap().isNull()) {
+        appendLog("=== Visualizer: Export requested but no image is available ===");
         QMessageBox::information(this, "Export image", "No image to export. Select a Phimax_*.txt file first.");
         return;
     }
@@ -1449,12 +1610,19 @@ void MainWindow::exportResultsImage() {
     const QString baseName = QFileInfo(resultsCurrentFile_).completeBaseName();
     const QString suggested = QDir(suggestDir).filePath(baseName + ".png");
 
-    const QString fileName = QFileDialog::getSaveFileName(this, "Export PNG", suggested, "PNG Image (*.png)");
-    if (fileName.isEmpty()) return;
+    const QString fileName = pickSavePngFile(this, "Export PNG", suggested);
+    if (fileName.isEmpty()) {
+        appendLog("=== Visualizer: Export cancelled ===");
+        return;
+    }
+    appendLog("=== Visualizer: Export saving to: " + fileName + " ===");
 
     if (!resultsImageItem_->pixmap().toImage().save(fileName)) {
+        appendLog("=== Visualizer: Export failed ===");
         QMessageBox::warning(this, "Export image", "Failed to save: " + fileName);
+        return;
     }
+    appendLog("=== Visualizer: Export OK ===");
 }
 
 RunParams MainWindow::singleParams() const {
