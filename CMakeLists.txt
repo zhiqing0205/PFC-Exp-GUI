@@ -50,4 +50,9 @@ add_executable(pfc_exp_gui WIN32 MACOSX_BUNDLE
   src/gui/resources.qrc
 )
 target_link_libraries(pfc_exp_gui PRIVATE Qt6::Widgets)
+target_compile_definitions(pfc_exp_gui PRIVATE
+  PFC_GRID_L=${PFC_GRID_L}
+  PFC_GRID_M=${PFC_GRID_M}
+  PFC_GRID_N=${PFC_GRID_N}
+)
 set_target_properties(pfc_exp_gui PROPERTIES OUTPUT_NAME "PFC-Exp-GUI")

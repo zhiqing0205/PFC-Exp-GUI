@@ -53,6 +53,20 @@
 #include <cstring>
 #include <limits>
 
+#ifndef PFC_GRID_L
+#define PFC_GRID_L 256
+#endif
+#ifndef PFC_GRID_M
+#define PFC_GRID_M 256
+#endif
+#ifndef PFC_GRID_N
+#define PFC_GRID_N 1
+#endif
+
+static constexpr int kGridL = PFC_GRID_L;
+static constexpr int kGridM = PFC_GRID_M;
+static constexpr int kGridN = PFC_GRID_N;
+
 static QDoubleSpinBox* makeDoubleSpin(double min, double max, double value, int decimals, double step) {
     auto* box = new QDoubleSpinBox;
     box->setRange(min, max);
@@ -199,9 +213,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     singleSteps_ = makeIntSpin(1, 100000000, 200, 10);
     singleMod_ = makeIntSpin(1, 100000000, 25, 1);
     singleSeed_ = makeIntSpin(0, 2147483647, 20200604, 1);
-    singleGrainX_ = makeIntSpin(1, 4096, 16, 1);
-    singleGrainY_ = makeIntSpin(1, 4096, 16, 1);
-    singleGrainZ_ = makeIntSpin(1, 4096, 1, 1);
+    singleGrainX_ = makeIntSpin(1, std::max(1, kGridL), std::min(16, std::max(1, kGridL)), 1);
+    singleGrainY_ = makeIntSpin(1, std::max(1, kGridM), std::min(16, std::max(1, kGridM)), 1);
+    singleGrainZ_ = makeIntSpin(1, std::max(1, kGridN), std::min(1, std::max(1, kGridN)), 1);
     singleAxx_ = makeDoubleSpin(0.0, 1000.0, 0.0, 6, 0.1);
 
     auto addSingleParam = [&](int row, int colPair, const QString& labelText, QWidget* editor) {
@@ -366,9 +380,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     batchDx_ = makeDoubleSpin(1e-6, 10.0, 0.125, 6, 0.01);
     batchMod_ = makeIntSpin(1, 100000000, 25, 1);
     batchSeed_ = makeIntSpin(0, 2147483647, 20200604, 1);
-    batchGrainX_ = makeIntSpin(1, 4096, 16, 1);
-    batchGrainY_ = makeIntSpin(1, 4096, 16, 1);
-    batchGrainZ_ = makeIntSpin(1, 4096, 1, 1);
+    batchGrainX_ = makeIntSpin(1, std::max(1, kGridL), std::min(16, std::max(1, kGridL)), 1);
+    batchGrainY_ = makeIntSpin(1, std::max(1, kGridM), std::min(16, std::max(1, kGridM)), 1);
+    batchGrainZ_ = makeIntSpin(1, std::max(1, kGridN), std::min(1, std::max(1, kGridN)), 1);
     batchAxx_ = makeDoubleSpin(0.0, 1000.0, 0.0, 6, 0.1);
 
     auto addBatchFixed = [&](int row, int colPair, const QString& labelText, QWidget* editor) {
@@ -1649,12 +1663,37 @@ void MainWindow::setRunningUi(bool running) {
 }
 
 void MainWindow::launchJob(const RunJob& job) {
+    RunJob actual = job;
+    {
+        const int maxX = std::max(1, kGridL);
+        const int maxY = std::max(1, kGridM);
+        const int maxZ = std::max(1, kGridN);
+        const int beforeX = actual.params.grainx;
+        const int beforeY = actual.params.grainy;
+        const int beforeZ = actual.params.grainz;
+        actual.params.grainx = std::clamp(actual.params.grainx, 1, maxX);
+        actual.params.grainy = std::clamp(actual.params.grainy, 1, maxY);
+        actual.params.grainz = std::clamp(actual.params.grainz, 1, maxZ);
+        if (beforeX != actual.params.grainx || beforeY != actual.params.grainy || beforeZ != actual.params.grainz) {
+            appendLog(QString("=== Note: grain counts clamped to grid: (%1,%2,%3) -> (%4,%5,%6), grid=(%7,%8,%9) ===")
+                          .arg(beforeX)
+                          .arg(beforeY)
+                          .arg(beforeZ)
+                          .arg(actual.params.grainx)
+                          .arg(actual.params.grainy)
+                          .arg(actual.params.grainz)
+                          .arg(kGridL)
+                          .arg(kGridM)
+                          .arg(kGridN));
+        }
+    }
+
     QString err;
-    if (!ensureDir(job.outDir, &err)) {
+    if (!ensureDir(actual.outDir, &err)) {
         QMessageBox::critical(this, "Output error", err);
         return;
     }
-    if (!writeParamsJson(job, &err)) {
+    if (!writeParamsJson(actual, &err)) {
         QMessageBox::critical(this, "Output error", err);
         return;
     }
@@ -1695,20 +1734,20 @@ void MainWindow::launchJob(const RunJob& job) {
 
     process_ = new QProcess(this);
     process_->setProgram(program);
-    process_->setArguments(buildArgs(job.params, job.outDir));
-    process_->setWorkingDirectory(job.outDir);
+    process_->setArguments(buildArgs(actual.params, actual.outDir));
+    process_->setWorkingDirectory(actual.outDir);
     process_->setProcessChannelMode(QProcess::MergedChannels);
     processOutputBuffer_.clear();
-    currentJobMode_ = job.mode;
-    currentJobTotalSteps_ = std::max(0, job.params.steps);
-    if (job.mode == "single") {
+    currentJobMode_ = actual.mode;
+    currentJobTotalSteps_ = std::max(0, actual.params.steps);
+    if (actual.mode == "single") {
         if (singleStepProgress_) {
-            singleStepProgress_->setRange(0, std::max(1, job.params.steps));
+            singleStepProgress_->setRange(0, std::max(1, actual.params.steps));
             singleStepProgress_->setValue(0);
         }
-    } else if (job.mode == "batch") {
+    } else if (actual.mode == "batch") {
         if (batchStepProgress_) {
-            batchStepProgress_->setRange(0, std::max(1, job.params.steps));
+            batchStepProgress_->setRange(0, std::max(1, actual.params.steps));
             batchStepProgress_->setValue(0);
         }
     }
@@ -1717,8 +1756,8 @@ void MainWindow::launchJob(const RunJob& job) {
     connect(process_, &QProcess::finished, this, &MainWindow::onProcessFinished);
     connect(process_, &QProcess::errorOccurred, this, &MainWindow::onProcessError);
 
-    currentOutputDir_ = job.outDir;
-    appendLog(QString("=== %1: %2 ===").arg(formatRunLabel(job.index, job.total), job.outDir));
+    currentOutputDir_ = actual.outDir;
+    appendLog(QString("=== %1: %2 ===").arg(formatRunLabel(actual.index, actual.total), actual.outDir));
     appendLog(program + " " + process_->arguments().join(' '));
 
     process_->start();
