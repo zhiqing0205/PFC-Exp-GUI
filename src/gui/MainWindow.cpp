@@ -53,8 +53,30 @@
 #include <cstring>
 #include <limits>
 
-static QDoubleSpinBox* makeDoubleSpin(double min, double max, double value, int decimals, double step) {
-    auto* box = new QDoubleSpinBox;
+class NoWheelSpinBox final : public QSpinBox {
+public:
+    using QSpinBox::QSpinBox;
+
+protected:
+    void wheelEvent(QWheelEvent* event) override {
+        // Prevent accidental value changes while scrolling the page.
+        event->ignore();
+    }
+};
+
+class NoWheelDoubleSpinBox final : public QDoubleSpinBox {
+public:
+    using QDoubleSpinBox::QDoubleSpinBox;
+
+protected:
+    void wheelEvent(QWheelEvent* event) override {
+        // Prevent accidental value changes while scrolling the page.
+        event->ignore();
+    }
+};
+
+static QDoubleSpinBox* makeDoubleSpin(double min, double max, double value, int decimals, double step, bool disableWheel = false) {
+    auto* box = disableWheel ? static_cast<QDoubleSpinBox*>(new NoWheelDoubleSpinBox) : new QDoubleSpinBox;
     box->setRange(min, max);
     box->setDecimals(decimals);
     box->setSingleStep(step);
@@ -63,8 +85,8 @@ static QDoubleSpinBox* makeDoubleSpin(double min, double max, double value, int 
     return box;
 }
 
-static QSpinBox* makeIntSpin(int min, int max, int value, int step) {
-    auto* box = new QSpinBox;
+static QSpinBox* makeIntSpin(int min, int max, int value, int step, bool disableWheel = false) {
+    auto* box = disableWheel ? static_cast<QSpinBox*>(new NoWheelSpinBox) : new QSpinBox;
     box->setRange(min, max);
     box->setSingleStep(step);
     box->setValue(value);
@@ -227,14 +249,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     singleParamsGrid->setColumnStretch(1, 1);
     singleParamsGrid->setColumnStretch(3, 1);
 
-    singleU0_ = makeDoubleSpin(-2.0, 2.0, 0.05, 6, 0.01);
-    singleCon0_ = makeDoubleSpin(0.0, 1.0, 0.2, 6, 0.01);
-    singleSig_ = makeDoubleSpin(0.0, 2.0, 0.05, 6, 0.01);
-    singleDt_ = makeDoubleSpin(1e-6, 1.0, 0.05, 6, 0.01);
-    singleDx_ = makeDoubleSpin(1e-6, 10.0, 0.125, 6, 0.01);
-    singleSteps_ = makeIntSpin(1, 100000000, 200, 10);
-    singleMod_ = makeIntSpin(1, 100000000, 25, 1);
-    singleSeed_ = makeIntSpin(0, 2147483647, 20200604, 1);
+    singleU0_ = makeDoubleSpin(-2.0, 2.0, 0.05, 6, 0.01, true);
+    singleCon0_ = makeDoubleSpin(0.0, 1.0, 0.2, 6, 0.01, true);
+    singleSig_ = makeDoubleSpin(0.0, 2.0, 0.05, 6, 0.01, true);
+    singleDt_ = makeDoubleSpin(1e-6, 1.0, 0.05, 6, 0.01, true);
+    singleDx_ = makeDoubleSpin(1e-6, 10.0, 0.125, 6, 0.01, true);
+    singleSteps_ = makeIntSpin(1, 100000000, 200, 10, true);
+    singleMod_ = makeIntSpin(1, 100000000, 25, 1, true);
+    singleSeed_ = makeIntSpin(0, 2147483647, 20200604, 1, true);
 
     auto addSingleParam = [&](int row, int colPair, const QString& labelText, QWidget* editor) {
         auto* label = new QLabel(labelText);
@@ -379,7 +401,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         auto* fixedPage = new QWidget;
         auto* fixedLayout = new QHBoxLayout;
         fixedLayout->setContentsMargins(0, 0, 0, 0);
-        p.fixedDouble = makeDoubleSpin(minV, maxV, defV, decimals, stepV);
+        p.fixedDouble = makeDoubleSpin(minV, maxV, defV, decimals, stepV, true);
         fixedLayout->addWidget(p.fixedDouble, 1);
         fixedPage->setLayout(fixedLayout);
 
@@ -389,14 +411,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         rangeLayout->setContentsMargins(0, 0, 0, 0);
         rangeLayout->setSpacing(8);
         rangeLayout->addWidget(new QLabel("Start"));
-        p.rangeStartDouble = makeDoubleSpin(minV, maxV, defV, decimals, stepV);
+        p.rangeStartDouble = makeDoubleSpin(minV, maxV, defV, decimals, stepV, true);
         rangeLayout->addWidget(p.rangeStartDouble);
         rangeLayout->addWidget(new QLabel("End"));
-        p.rangeEndDouble = makeDoubleSpin(minV, maxV, defV, decimals, stepV);
+        p.rangeEndDouble = makeDoubleSpin(minV, maxV, defV, decimals, stepV, true);
         rangeLayout->addWidget(p.rangeEndDouble);
         rangeLayout->addWidget(new QLabel("Step"));
         const double maxStep = std::max(1e-12, maxV - minV);
-        p.rangeStepDouble = makeDoubleSpin(1e-12, maxStep, stepV, decimals, stepV);
+        p.rangeStepDouble = makeDoubleSpin(1e-12, maxStep, stepV, decimals, stepV, true);
         rangeLayout->addWidget(p.rangeStepDouble);
         rangeLayout->addWidget(new QLabel("List"));
         p.rangePreview = new QLineEdit;
@@ -459,7 +481,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         auto* fixedPage = new QWidget;
         auto* fixedLayout = new QHBoxLayout;
         fixedLayout->setContentsMargins(0, 0, 0, 0);
-        p.fixedInt = makeIntSpin(minV, maxV, defV, stepV);
+        p.fixedInt = makeIntSpin(minV, maxV, defV, stepV, true);
         fixedLayout->addWidget(p.fixedInt, 1);
         fixedPage->setLayout(fixedLayout);
 
@@ -468,13 +490,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         rangeLayout->setContentsMargins(0, 0, 0, 0);
         rangeLayout->setSpacing(8);
         rangeLayout->addWidget(new QLabel("Start"));
-        p.rangeStartInt = makeIntSpin(minV, maxV, defV, stepV);
+        p.rangeStartInt = makeIntSpin(minV, maxV, defV, stepV, true);
         rangeLayout->addWidget(p.rangeStartInt);
         rangeLayout->addWidget(new QLabel("End"));
-        p.rangeEndInt = makeIntSpin(minV, maxV, defV, stepV);
+        p.rangeEndInt = makeIntSpin(minV, maxV, defV, stepV, true);
         rangeLayout->addWidget(p.rangeEndInt);
         rangeLayout->addWidget(new QLabel("Step"));
-        p.rangeStepInt = makeIntSpin(1, std::max(1, maxV - minV), stepV, 1);
+        p.rangeStepInt = makeIntSpin(1, std::max(1, maxV - minV), stepV, 1, true);
         rangeLayout->addWidget(p.rangeStepInt);
         rangeLayout->addWidget(new QLabel("List"));
         p.rangePreview = new QLineEdit;

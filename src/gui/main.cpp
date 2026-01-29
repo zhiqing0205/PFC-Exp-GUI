@@ -204,6 +204,10 @@ QComboBox {
 QComboBox:focus {
   border: 1px solid #4080FF;
 }
+QComboBox:on {
+  background: #101010;
+  border: 1px solid #4080FF;
+}
 QComboBox::drop-down {
   subcontrol-origin: padding;
   subcontrol-position: top right;
@@ -228,10 +232,26 @@ QComboBox[kind="mode"]:hover {
 QComboBox[kind="mode"]:focus {
   border-color: #14B8A6;
 }
+QComboBox[kind="mode"]:on {
+  background: #0F1718;
+  border-color: #14B8A6;
+}
+QComboBox[kind="mode"]::drop-down:on {
+  border-left: 1px solid #14B8A6;
+}
 QComboBox QAbstractItemView {
   background: #101010;
   border: 1px solid #2E2E2E;
   selection-background-color: #4080FF;
+}
+QComboBox QAbstractItemView::item {
+  padding: 6px 10px;
+}
+QComboBox[kind="mode"] QAbstractItemView {
+  background: #0F1718;
+  border: 1px solid #1F3B3A;
+  selection-background-color: #14B8A6;
+  selection-color: #0B0B0B;
 }
 
 QToolButton, QPushButton {
