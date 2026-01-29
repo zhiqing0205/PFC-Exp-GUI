@@ -259,7 +259,7 @@ QProgressBar {
 QProgressBar::chunk {
   border-radius: 8px;
   background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-    stop:0 #4080FF, stop:1 #7A5CFF);
+    stop:0 #22C55E, stop:1 #14B8A6);
 }
 
 QListWidget {
