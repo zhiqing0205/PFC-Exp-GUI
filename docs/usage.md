@@ -49,4 +49,4 @@ GUI 提供 `TXT Visualizer` 标签页，用于快速查看输出目录中的 `*.
 ## 5. macOS 常见问题
 
 - 如果运行时日志显示 `exitCode=9 (SIGKILL)`，通常是 Gatekeeper/隔离属性（quarantine）或依赖 dylib 缺失导致。可以尝试：
-  - `xattr -dr com.apple.quarantine /Applications/PFC-Exp-GUI.app`
+  - `xattr -dr com.apple.quarantine "/Applications/MID Nano.app"`

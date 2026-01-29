@@ -820,7 +820,7 @@ QString MainWindow::cliPath() const {
 QString MainWindow::defaultBaseOutputDir() const {
     const QString docs = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
     if (!docs.isEmpty()) {
-        return QDir(docs).filePath("PFC-Exp-GUI/outputs");
+        return QDir(docs).filePath("MID Nano/outputs");
     }
     return QDir::current().filePath("outputs");
 }
@@ -2142,7 +2142,7 @@ void MainWindow::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus
 #endif
 #ifdef Q_OS_MACOS
     if (!ok && exitStatus == QProcess::CrashExit && code == 9u) {
-        appendLog("=== Hint: SIGKILL(9) on macOS can be Gatekeeper/quarantine or a missing dylib. If this is a downloaded app, try: xattr -dr com.apple.quarantine /Applications/PFC-Exp-GUI.app ===");
+        appendLog("=== Hint: SIGKILL(9) on macOS can be Gatekeeper/quarantine or a missing dylib. If this is a downloaded app, try: xattr -dr com.apple.quarantine \"/Applications/MID Nano.app\" ===");
     }
 #endif
 

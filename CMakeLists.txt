@@ -50,4 +50,4 @@ add_executable(pfc_exp_gui WIN32 MACOSX_BUNDLE
   src/gui/resources.qrc
 )
 target_link_libraries(pfc_exp_gui PRIVATE Qt6::Widgets)
-set_target_properties(pfc_exp_gui PROPERTIES OUTPUT_NAME "PFC-Exp-GUI")
+set_target_properties(pfc_exp_gui PROPERTIES OUTPUT_NAME "MID Nano")

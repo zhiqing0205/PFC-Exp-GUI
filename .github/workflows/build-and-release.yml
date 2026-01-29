@@ -135,10 +135,10 @@ jobs:
           $version = $env:GITHUB_REF_NAME
 
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item "build/bin/PFC-Exp-GUI.exe" "dist/" -Force
+          Copy-Item "build/bin/MID Nano.exe" "dist/" -Force
           Copy-Item "build/bin/pfc-exp-cli.exe" "dist/" -Force
 
-          windeployqt --release --compiler-runtime "dist/PFC-Exp-GUI.exe"
+          windeployqt --release --compiler-runtime "dist/MID Nano.exe"
 
           # Bundle vcpkg runtime DLLs (needed e.g. for FFTW3).
           $triplet = "x64-windows"
@@ -170,7 +170,7 @@ jobs:
             $fftw | ForEach-Object { Write-Host "  - $($_.Name)" }
           }
 
-          $out = "PFC-Exp-GUI-$version-${{ matrix.artifact_suffix }}.zip"
+          $out = "MID Nano-$version-${{ matrix.artifact_suffix }}.zip"
           Compress-Archive -Path "dist/*" -DestinationPath $out -Force
           "artifact=$out" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
@@ -180,9 +180,9 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME}"
           mkdir -p dist
-          cp "build/bin/PFC-Exp-GUI" "dist/"
+          cp "build/bin/MID Nano" "dist/"
           cp "build/bin/pfc-exp-cli" "dist/"
-          OUT="PFC-Exp-GUI-${VERSION}-${{ matrix.artifact_suffix }}.tar.gz"
+          OUT="MID Nano-${VERSION}-${{ matrix.artifact_suffix }}.tar.gz"
           cmake -E chdir dist cmake -E tar cfvz "../${OUT}" .
           echo "artifact=${OUT}" >> "$GITHUB_OUTPUT"
 
@@ -191,7 +191,7 @@ jobs:
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME}"
-          APP="build/bin/PFC-Exp-GUI.app"
+          APP="build/bin/MID Nano.app"
           CLI_IN_APP="${APP}/Contents/MacOS/pfc-exp-cli"
           cp "build/bin/pfc-exp-cli" "${CLI_IN_APP}"
           chmod +x "${CLI_IN_APP}"
@@ -280,7 +280,7 @@ jobs:
 
           mkdir -p dist
           cp -R "${APP}" dist/
-          OUT="PFC-Exp-GUI-${VERSION}-${{ matrix.artifact_suffix }}.zip"
+          OUT="MID Nano-${VERSION}-${{ matrix.artifact_suffix }}.zip"
           cmake -E chdir dist cmake -E tar cfv "../${OUT}" --format=zip .
           echo "artifact=${OUT}" >> "$GITHUB_OUTPUT"
 
@@ -289,7 +289,7 @@ jobs:
         with:
           name: ${{ matrix.artifact_suffix }}
           path: |
-            PFC-Exp-GUI-${{ github.ref_name }}-${{ matrix.artifact_suffix }}.*
+            MID Nano-${{ github.ref_name }}-${{ matrix.artifact_suffix }}.*
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
@@ -309,4 +309,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            PFC-Exp-GUI-${{ github.ref_name }}-*
+            MID Nano-${{ github.ref_name }}-*

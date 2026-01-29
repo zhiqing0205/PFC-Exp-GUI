@@ -314,7 +314,7 @@ QHeaderView::section {
 
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
-    app.setApplicationName("PFC-Exp-GUI");
+    app.setApplicationName("MID Nano");
     app.setWindowIcon(makeAppIcon());
 
     if (QStyleFactory::keys().contains("Fusion")) {

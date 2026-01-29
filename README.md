@@ -1,10 +1,10 @@
-# PFC-Exp-GUI
+# MID Nano
 
 使用 Qt（Qt6 Widgets）制作的实验参数配置 GUI，用来生成/组合实验参数并调用 C++ 实验程序运行（`pfc-exp-cli`）。
 
 ## 组成
 
-- `PFC-Exp-GUI`：图形界面（单次实验 + 批量扫参）
+- `MID Nano`：图形界面（单次实验 + 批量扫参）
 - `pfc-exp-cli`：实验程序命令行版本（参数通过命令行传入，输出写入指定目录）
 
 ## 功能
@@ -34,7 +34,7 @@ cmake --build build
 
 产物位于 `build/bin/`：
 
-- `build/bin/PFC-Exp-GUI`
+- `build/bin/MID Nano`
 - `build/bin/pfc-exp-cli`
 
 ### Windows（建议使用 Release）
@@ -58,7 +58,7 @@ cmake --build build --config Release
 
 ### GUI
 
-运行 `PFC-Exp-GUI`（确保同目录下存在 `pfc-exp-cli`），在界面中填写参数与输出目录：
+运行 `MID Nano`（确保同目录下存在 `pfc-exp-cli`），在界面中填写参数与输出目录：
 
 - Single Run：单次运行
 - Batch Sweep：扫参批量运行（`u0 / con0 / steps`）
