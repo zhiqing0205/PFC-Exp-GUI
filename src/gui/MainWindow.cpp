@@ -25,6 +25,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QProgressBar>
@@ -123,14 +124,39 @@ public:
 
 protected:
     void wheelEvent(QWheelEvent* event) override {
-        if (event->modifiers().testFlag(Qt::ControlModifier)) {
-            constexpr double base = 1.0015;
-            const double factor = std::pow(base, static_cast<double>(event->angleDelta().y()));
-            scale(factor, factor);
-            event->accept();
+        int delta = event->angleDelta().y();
+        if (delta == 0) delta = event->pixelDelta().y();
+        if (delta == 0) {
+            QGraphicsView::wheelEvent(event);
             return;
         }
-        QGraphicsView::wheelEvent(event);
+
+        constexpr double base = 1.0015;
+        double factor = std::pow(base, static_cast<double>(delta));
+
+        constexpr double kMinScale = 0.05;
+        constexpr double kMaxScale = 200.0;
+        const double current = transform().m11();
+        const double next = current * factor;
+        if (next < kMinScale) factor = kMinScale / current;
+        if (next > kMaxScale) factor = kMaxScale / current;
+
+        scale(factor, factor);
+        event->accept();
+    }
+
+    void mousePressEvent(QMouseEvent* event) override {
+        if (event->button() == Qt::LeftButton && dragMode() == QGraphicsView::ScrollHandDrag) {
+            setCursor(Qt::ClosedHandCursor);
+        }
+        QGraphicsView::mousePressEvent(event);
+    }
+
+    void mouseReleaseEvent(QMouseEvent* event) override {
+        if (event->button() == Qt::LeftButton && dragMode() == QGraphicsView::ScrollHandDrag) {
+            setCursor(Qt::OpenHandCursor);
+        }
+        QGraphicsView::mouseReleaseEvent(event);
     }
 };
 
@@ -725,6 +751,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resultsImageView_->setBackgroundBrush(QColor(248, 248, 250));
     resultsImageView_->setRenderHint(QPainter::Antialiasing, true);
     resultsImageView_->setDragMode(QGraphicsView::ScrollHandDrag);
+    resultsImageView_->setCursor(Qt::OpenHandCursor);
     resultsImageView_->setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
     resultsImageView_->setResizeAnchor(QGraphicsView::AnchorUnderMouse);
     resultsImageItem_ = resultsImageScene_->addPixmap(QPixmap());
