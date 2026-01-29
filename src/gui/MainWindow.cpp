@@ -90,7 +90,7 @@ protected:
 };
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
-    setWindowTitle("PFC-Exp-GUI");
+    setWindowTitle("MID Nano");
     resize(1100, 780);
 
     auto* tabs = new QTabWidget;
@@ -138,7 +138,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     tabs->addTab(singleScroll, "Single Run");
     tabs->addTab(batchScroll, "Batch Sweep");
-    tabs->addTab(resultsScroll, "TXT Visualizer");
+    tabs->addTab(resultsScroll, "Visualizer");
     tabs->addTab(manufacturingScroll, "Manufacturing");
     tabs->addTab(transformationScroll, "Transformation");
     tabs->addTab(mechanicsScroll, "Stress–Strain");
