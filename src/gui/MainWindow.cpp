@@ -181,12 +181,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     // ---------- Single tab ----------
     auto* singleLayout = new QVBoxLayout;
-    singleLayout->setSpacing(12);
+    singleLayout->setSpacing(10);
     singleTab->setLayout(singleLayout);
 
     auto* singleParamsBox = new QGroupBox("Parameters");
     auto* singleParamsGrid = new QGridLayout;
-    singleParamsGrid->setVerticalSpacing(8);
+    singleParamsGrid->setVerticalSpacing(6);
     singleParamsGrid->setHorizontalSpacing(12);
     singleParamsGrid->setColumnStretch(1, 1);
     singleParamsGrid->setColumnStretch(3, 1);
@@ -283,7 +283,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     // ---------- Batch tab ----------
     auto* batchLayout = new QVBoxLayout;
-    batchLayout->setSpacing(12);
+    batchLayout->setSpacing(10);
     batchTab->setLayout(batchLayout);
 
     auto* batchHint = new QLabel(
@@ -294,7 +294,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     auto* batchSweepBox = new QGroupBox("Sweep (Cartesian product)");
     auto* sweepGrid = new QGridLayout;
-    sweepGrid->setVerticalSpacing(8);
+    sweepGrid->setVerticalSpacing(6);
     sweepGrid->setHorizontalSpacing(10);
     sweepGrid->setColumnStretch(2, 1);
     sweepGrid->setColumnStretch(3, 1);
@@ -357,7 +357,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     auto* batchFixedBox = new QGroupBox("Fixed Parameters");
     auto* batchFixedGrid = new QGridLayout;
-    batchFixedGrid->setVerticalSpacing(8);
+    batchFixedGrid->setVerticalSpacing(6);
     batchFixedGrid->setHorizontalSpacing(12);
     batchFixedGrid->setColumnStretch(1, 1);
     batchFixedGrid->setColumnStretch(3, 1);
