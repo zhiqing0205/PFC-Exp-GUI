@@ -60,13 +60,13 @@ MID Nano 是一个用于配置实验参数、运行 `pfc-exp-cli` 并查看输�
 MID Nano 的目标是把“改参数 → 跑一次 → 看结果”的流程做得更直观：
 
 - 在 GUI 中配置实验参数（如 `u0 / con0 / sig / dt / dx / steps / mod / seed`）。
-- 支持单次运行，也支持扫参批量组合运行（Fixed / Range / List 三种模式）。
+- `Experiment` 标签页支持固定参数运行，也支持扫参组合运行（Fixed / Range / List 三种模式）。
 - 自动把每次运行写入输出目录，并生成 `params.json / run_config.txt / checkpoint_timestamps.txt / Phimax_*.txt` 等文件。
 - 在 `Visualizer` 标签页中直接查看输出（表格 / 热图），并支持导出 PNG。
 
 ### 1.2 版本信息与更新方式
 
-- 版本号以 Git 标签为准，例如 `0.3.9`。
+- 版本号以 Git 标签为准，例如 `0.4.1`。
 - 推荐从 GitHub Releases 下载对应版本的压缩包；更新时替换整个目录即可。
 
 > （截图占位：Release 页面/Tag 列表）
@@ -109,23 +109,40 @@ MID Nano 的目标是把“改参数 → 跑一次 → 看结果”的流程做�
 从 GitHub Releases 下载对应平台产物（文件名以版本号为准），例如：
 
 ```
-MID Nano-0.3.9-windows-x64.zip
-MID Nano-0.3.9-macos.zip
-MID Nano-0.3.9-linux-x86_64.tar.gz
+MID Nano-0.4.1-win-x64.exe
+MID Nano-0.4.1-win-x64.zip
+MID Nano-0.4.1-mac-arm64.dmg
+MID Nano-0.4.1-mac-arm64.zip
+MID Nano-0.4.1-mac-x64.dmg
+MID Nano-0.4.1-mac-x64.zip
+MID Nano-0.4.1-linux-amd64.deb
+MID Nano-0.4.1-linux-x86_64.AppImage
+MID Nano-0.4.1-linux-arm64.deb
+MID Nano-0.4.1-linux-arm64.AppImage
 ```
 
 > （截图占位：下载产物列表）
 >
 > 建议标注：
-> ① Windows 压缩包；② macOS 压缩包；③ Linux 压缩包；④ 版本号一致性。
+> ① 各平台产物（zip/dmg/deb/AppImage）；② 同一版本号（Tag）对应多种产物；③ 校验信息（如有）。
 
 ### 3.2 Windows / macOS / Linux 运行说明
 
 **Windows**
 
+推荐两种方式（二选一）：
+
+1) 安装版（`*-win-x64.exe`）
+
+1. 双击安装包，按提示安装。
+2. 从开始菜单启动 `MID Nano`。
+
+2) 便携版（`*-win-x64.zip`）
+
 1. 解压 zip 到任意目录（建议放在非系统目录，如 `D:\Apps\MID Nano\`）。
 2. 双击运行 `MID Nano.exe`。
-3. 确保同目录下存在 `pfc-exp-cli.exe`（发布版已包含）。
+
+无论哪种方式，请确保 `pfc-exp-cli.exe` 与 GUI 在同一目录（发布版已包含）。
 
 > （截图占位：Windows 解压后的目录结构）
 >
@@ -133,9 +150,21 @@ MID Nano-0.3.9-linux-x86_64.tar.gz
 
 **macOS**
 
-1. 将 `MID Nano.app` 放到 `/Applications`（或任意目录）。
-2. 若首次运行被阻止，可尝试：
-   - `xattr -dr com.apple.quarantine "/Applications/MID Nano.app"`
+推荐两种方式（二选一）：
+
+1) DMG（`*.dmg`）
+
+1. 双击打开 DMG。
+2. 将 `MID Nano.app` 拖拽到 `/Applications`。
+
+2) ZIP（`*.zip`）
+
+1. 解压 zip。
+2. 将 `MID Nano.app` 放到 `/Applications`（或任意目录）运行。
+
+若首次运行被阻止，可尝试执行：
+
+- `xattr -dr com.apple.quarantine "/Applications/MID Nano.app"`
 
 > （截图占位：macOS Finder 中的 app）
 >
@@ -143,16 +172,33 @@ MID Nano-0.3.9-linux-x86_64.tar.gz
 
 **Linux**
 
-1. 解压 tar.gz 并运行二进制。
-2. 如遇到权限问题，先执行 `chmod +x "MID Nano"`。
+推荐两种方式（二选一）：
+
+1) DEB（`*.deb`）
+
+- Debian/Ubuntu：
+  - `sudo apt-get install -y "./MID Nano-0.4.1-linux-amd64.deb"`（按需替换为 arm64 版本）
+
+2) AppImage（`*.AppImage`）
+
+- `chmod +x "MID Nano-*.AppImage"`
+- `./"MID Nano-0.4.1-linux-x86_64.AppImage"`（按需替换为 arm64 版本）
 
 > （截图占位：Linux 终端运行示例）
 >
-> 建议标注：① 解压命令；② 赋权命令；③ 运行命令。
+> 建议标注：① 安装/运行命令；② 权限处理；③ 启动后的主界面。
 
 ### 3.3 卸载方法
 
-MID Nano 为绿色版。卸载时直接删除程序目录即可。输出目录默认在“文档/MID Nano/outputs”，如需清理请手动删除输出目录。
+不同平台卸载方式如下：
+
+- Windows 安装版：运行开始菜单中的卸载项，或执行安装目录内的 `Uninstall.exe`。
+- Windows 便携版：直接删除解压目录即可。
+- macOS：删除 `MID Nano.app`。
+- Linux（DEB）：`sudo apt remove mid-nano`（或 `sudo dpkg -r mid-nano`）。
+- Linux（AppImage）：删除 `.AppImage` 文件即可。
+
+输出目录默认在“文档/MID Nano/outputs”，如需清理请手动删除输出目录。
 
 ---
 
@@ -160,12 +206,12 @@ MID Nano 为绿色版。卸载时直接删除程序目录即可。输出目录�
 
 ### 4.1 主窗口布局
 
-主窗口由两部分组成：上方为功能标签页，下方为日志区域（可拖动分隔条调整高度）。
+主窗口由三部分组成：顶部为快捷按钮区（Upload License / About），中间为功能标签页，下方为日志区域（可拖动分隔条调整高度）。
 
 > （截图占位：主窗口全景）
 >
 > 建议标注：
-> ① 顶部标签页；② 参数区；③ 输出区；④ 进度条；⑤ Log（可调高度）。
+> ① 顶部快捷按钮；② 标签页；③ 参数区；④ 输出区；⑤ 进度条；⑥ Log（可调高度）。
 
 ### 4.2 标签页说明
 
@@ -179,6 +225,15 @@ MID Nano 为绿色版。卸载时直接删除程序目录即可。输出目录�
 
 - `Log` 会打印每次运行的输出目录、执行命令、CLI 输出与错误提示。
 - Experiment 会显示“当前 run 的 step 进度”；当总运行数 > 1 时，还会显示“整体 run 进度”（按队列完成比例更新）。
+
+### 4.4 关于（About）与 License
+
+- `About`：显示项目名称、版本号、作者与仓库链接（GitHub/Gitee）。
+- `Upload License…`：选择一个 license 文件并保存到本机应用数据目录（仅本地保存，不会上传网络）。该文件用于后续功能（如授权校验、功能解锁等）的对接。
+
+> （截图占位：About 弹窗）
+>
+> 建议标注：① 项目名称；② 版本号；③ 仓库链接；④ 作者信息。
 
 ---
 
@@ -294,3 +349,4 @@ GUI 会对所有参数的序列做笛卡尔积组合，生成任务队列并依�
 - `Plot` 热图缩放：滚轮缩放。
 - `Plot` 热图平移：鼠标左键按住拖动。
 - 目录快速定位：`Open Output` 打开当前输出目录。
+- 快捷入口：顶部 `About` 查看版本与链接；`Upload License…` 保存 license 文件。
