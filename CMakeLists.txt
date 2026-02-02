@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+set(MID_NANO_VERSION "${PROJECT_VERSION}" CACHE STRING "Version string shown in the MID Nano About dialog")
+
 set(PFC_GRID_L "256" CACHE STRING "Grid size L (compile-time)")
 set(PFC_GRID_M "256" CACHE STRING "Grid size M (compile-time)")
 set(PFC_GRID_N "1" CACHE STRING "Grid size N (compile-time)")
@@ -51,3 +53,4 @@ add_executable(pfc_exp_gui WIN32 MACOSX_BUNDLE
 )
 target_link_libraries(pfc_exp_gui PRIVATE Qt6::Widgets)
 set_target_properties(pfc_exp_gui PROPERTIES OUTPUT_NAME "MID Nano")
+target_compile_definitions(pfc_exp_gui PRIVATE MID_NANO_VERSION="${MID_NANO_VERSION}")

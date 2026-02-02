@@ -12,6 +12,7 @@
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QFrame>
+#include <QDialogButtonBox>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QGraphicsPixmapItem>
@@ -164,6 +165,19 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("MID Nano");
     resize(1100, 780);
 
+    auto* topBar = new QWidget;
+    auto* topBarLayout = new QHBoxLayout;
+    topBarLayout->setContentsMargins(0, 0, 0, 0);
+    topBarLayout->setSpacing(10);
+    topBarLayout->addStretch(1);
+    auto* uploadLicenseBtn = new QPushButton("Upload License…");
+    uploadLicenseBtn->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
+    auto* aboutBtn = new QPushButton("About");
+    aboutBtn->setIcon(style()->standardIcon(QStyle::SP_MessageBoxInformation));
+    topBarLayout->addWidget(uploadLicenseBtn);
+    topBarLayout->addWidget(aboutBtn);
+    topBar->setLayout(topBarLayout);
+
     auto* tabs = new QTabWidget;
     tabs->setDocumentMode(true);
     tabs->setUsesScrollButtons(true);
@@ -252,9 +266,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     splitter->setStretchFactor(1, 1);
     splitter->setSizes(QList<int>() << 560 << 220);
 
+    centralLayout->addWidget(topBar, 0);
     centralLayout->addWidget(splitter, 1);
     central->setLayout(centralLayout);
     setCentralWidget(central);
+
+    connect(aboutBtn, &QPushButton::clicked, this, &MainWindow::showAboutDialog);
+    connect(uploadLicenseBtn, &QPushButton::clicked, this, &MainWindow::uploadLicense);
 
     // ---------- Experiment tab ----------
     auto* expLayout = new QVBoxLayout;
@@ -2141,6 +2159,89 @@ void MainWindow::updateExperimentPreview() {
     }
     if (!varied.isEmpty()) msg += " " + varied.join(", ");
     expPreview_->setText(msg);
+}
+
+void MainWindow::showAboutDialog() {
+    const QString appName = QCoreApplication::applicationName().isEmpty() ? QString("MID Nano") : QCoreApplication::applicationName();
+    const QString version = QCoreApplication::applicationVersion().isEmpty() ? QString("dev") : QCoreApplication::applicationVersion();
+
+    static const QString githubUrl = "https://github.com/zhiqing0205/PFC-Exp-GUI";
+    static const QString giteeUrl = "https://gitee.com/zhiqing0205/PFC-Exp-GUI";
+    static const QString author = "zhiqing0205";
+
+    QDialog dlg(this);
+    dlg.setWindowTitle("About " + appName);
+    dlg.setModal(true);
+    dlg.resize(520, 360);
+
+    auto* layout = new QVBoxLayout(&dlg);
+    layout->setSpacing(12);
+
+    auto* title = new QLabel(QString("<span style='font-size:16pt; font-weight:700;'>%1</span>").arg(appName.toHtmlEscaped()));
+    title->setTextFormat(Qt::RichText);
+    layout->addWidget(title);
+
+    auto* info = new QLabel;
+    info->setTextFormat(Qt::RichText);
+    info->setOpenExternalLinks(true);
+    info->setWordWrap(true);
+    info->setText(QString(
+                      "<b>Version</b>: %1<br/>"
+                      "<b>Author</b>: %2<br/>"
+                      "<b>GitHub</b>: <a href=\"%3\">%3</a><br/>"
+                      "<b>Gitee</b>: <a href=\"%4\">%4</a><br/>")
+                      .arg(version.toHtmlEscaped(), author.toHtmlEscaped(), githubUrl.toHtmlEscaped(), giteeUrl.toHtmlEscaped()));
+    layout->addWidget(info);
+
+    auto* hint = new QLabel("Tip: If you have a license file, click “Upload License…” on the main window.");
+    hint->setProperty("hint", true);
+    hint->setWordWrap(true);
+    layout->addWidget(hint);
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok);
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    layout->addWidget(buttons);
+
+    dlg.exec();
+}
+
+void MainWindow::uploadLicense() {
+    const QString selected = QFileDialog::getOpenFileName(
+        this,
+        "Select license file",
+        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation),
+        "License files (*.lic *.txt *.json);;All files (*.*)");
+
+    if (selected.trimmed().isEmpty()) {
+        appendLog("=== License: upload cancelled ===");
+        return;
+    }
+
+    const QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (appDataDir.isEmpty()) {
+        QMessageBox::warning(this, "License", "Cannot determine an app data directory to store the license file.");
+        return;
+    }
+
+    QDir dir(appDataDir);
+    if (!dir.exists() && !dir.mkpath(".")) {
+        QMessageBox::warning(this, "License", "Failed to create app data directory:\n" + appDataDir);
+        return;
+    }
+
+    const QString suffix = QFileInfo(selected).suffix();
+    const QString destName = suffix.isEmpty() ? QString("license.lic") : QString("license.%1").arg(suffix);
+    const QString destPath = dir.filePath(destName);
+    if (QFileInfo::exists(destPath)) QFile::remove(destPath);
+
+    if (!QFile::copy(selected, destPath)) {
+        QMessageBox::warning(this, "License", "Failed to copy license file to:\n" + destPath);
+        appendLog("=== License: upload failed: " + destPath + " ===");
+        return;
+    }
+
+    appendLog("=== License: saved to: " + destPath + " ===");
+    QMessageBox::information(this, "License", "License file saved to:\n" + destPath);
 }
 
 void MainWindow::onProcessReadyRead() {

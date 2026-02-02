@@ -52,6 +52,8 @@ private slots:
     void browseExperimentOutDir();
     void openCurrentOutputDir();
     void updateExperimentPreview();
+    void showAboutDialog();
+    void uploadLicense();
 
     void onProcessReadyRead();
     void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);

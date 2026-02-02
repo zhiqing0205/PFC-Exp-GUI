@@ -128,6 +128,7 @@ jobs:
             -DCMAKE_PREFIX_PATH="${{ steps.qt.outputs.qt-path }}" `
             -DCMAKE_TOOLCHAIN_FILE="$toolchain" `
             -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DMID_NANO_VERSION="$env:GITHUB_REF_NAME" `
             -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl
 
       - name: Configure (Linux)
@@ -135,7 +136,8 @@ jobs:
         shell: bash
         run: |
           cmake -S "${{ steps.proj.outputs.src_dir }}" -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
+            -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+            -DMID_NANO_VERSION="${GITHUB_REF_NAME}"
 
       - name: Configure (macOS)
         if: runner.os == 'macOS'
@@ -144,6 +146,7 @@ jobs:
           cmake -S "${{ steps.proj.outputs.src_dir }}" -B build -G Ninja \
             -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
             -DCMAKE_PREFIX_PATH="${{ steps.qt.outputs.qt-path }}" \
+            -DMID_NANO_VERSION="${GITHUB_REF_NAME}" \
             -DCMAKE_OSX_ARCHITECTURES="${{ matrix.osx_arch }}"
 
       - name: Build (Windows)

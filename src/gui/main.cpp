@@ -335,6 +335,9 @@ QHeaderView::section {
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     app.setApplicationName("MID Nano");
+#ifdef MID_NANO_VERSION
+    app.setApplicationVersion(QString::fromUtf8(MID_NANO_VERSION));
+#endif
     app.setWindowIcon(makeAppIcon());
 
     if (QStyleFactory::keys().contains("Fusion")) {
