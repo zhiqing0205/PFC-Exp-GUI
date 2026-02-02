@@ -12,8 +12,8 @@
 - [ ] 增加“版本信息/更新日志”表格：建议自动从 tag 生成，或手动维护一份简表
 
 ### 现有文档一致性
-- [ ] 更新 `docs/usage.md` 与 `docs/gui_tabs.md`：与当前 UI 保持一致（特别是 Batch Sweep 的 Fixed/Range/List 模式、Visualizer 的 Plot/Table 逻辑、缩放/拖动方式）
-- [ ] 更新 `README.md` 的功能描述：避免继续写成 “仅 u0/con0/steps 扫参”
+- [x] 更新 `docs/usage.md` 与 `docs/gui_tabs.md`：与当前 UI 保持一致（特别是 Batch Sweep 的 Fixed/Range/List 模式、Visualizer 的 Plot/Table 逻辑、缩放/拖动方式）
+- [x] 更新 `README.md` 的功能描述：避免继续写成 “仅 u0/con0/steps 扫参”
 
 ### 截图与标注规范
 - [ ] 建议建立 `docs/images/`：按“页面-区域-版本号”命名截图，便于更新维护
@@ -68,4 +68,3 @@
 - [ ] 增加 LICENSE（如 MIT/BSD/GPL/私有许可等）
 - [ ] 明确第三方依赖许可（Qt/FFTW/OpenMP 等）
 - [ ] 增加隐私说明：本项目是否会联网、是否收集任何数据（通常为“不收集”）
-
