@@ -17,12 +17,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
-            artifact_suffix: windows-x64
-          - os: ubuntu-latest
-            artifact_suffix: linux-x86_64
-          - os: macos-latest
-            artifact_suffix: macos
+          - id: win-x64
+            os: windows-latest
+          - id: linux-amd64
+            os: ubuntu-latest
+            deb_arch: amd64
+            appimage_arch: x86_64
+            linuxdeploy_arch: x86_64
+          - id: linux-arm64
+            os: ubuntu-24.04-arm64
+            deb_arch: arm64
+            appimage_arch: aarch64
+            linuxdeploy_arch: aarch64
+          - id: mac-arm64
+            os: macos-14
+            osx_arch: arm64
+          - id: mac-x64
+            os: macos-13
+            osx_arch: x86_64
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -48,6 +60,7 @@ jobs:
 
       - name: Install Qt
         id: qt
+        if: runner.os != 'Linux'
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
@@ -72,9 +85,17 @@ jobs:
           vcpkgGitCommitId: "389d14fa0e0692f36967e9eb5499e909317644d5"
           runVcpkgInstall: true
 
-      - name: Install FFTW (Linux)
+      - name: Install deps (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libfftw3-dev
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build g++ \
+            qt6-base-dev qt6-base-dev-tools \
+            libfftw3-dev \
+            curl patchelf squashfs-tools \
+            desktop-file-utils
 
       - name: Install FFTW (macOS)
         if: runner.os == 'macOS'
@@ -109,13 +130,21 @@ jobs:
             -DVCPKG_TARGET_TRIPLET=x64-windows `
             -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl
 
-      - name: Configure (Linux/macOS)
-        if: runner.os != 'Windows'
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cmake -S "${{ steps.proj.outputs.src_dir }}" -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
+
+      - name: Configure (macOS)
+        if: runner.os == 'macOS'
         shell: bash
         run: |
           cmake -S "${{ steps.proj.outputs.src_dir }}" -B build -G Ninja \
             -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
-            -DCMAKE_PREFIX_PATH="${{ steps.qt.outputs.qt-path }}"
+            -DCMAKE_PREFIX_PATH="${{ steps.qt.outputs.qt-path }}" \
+            -DCMAKE_OSX_ARCHITECTURES="${{ matrix.osx_arch }}"
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
@@ -127,6 +156,13 @@ jobs:
         shell: bash
         run: cmake --build build
 
+      - name: Install NSIS (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          choco install nsis -y --no-progress
+
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -134,11 +170,12 @@ jobs:
           $ErrorActionPreference = "Stop"
           $version = $env:GITHUB_REF_NAME
 
+          New-Item -ItemType Directory -Force -Path stage | Out-Null
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item "build/bin/MID Nano.exe" "dist/" -Force
-          Copy-Item "build/bin/pfc-exp-cli.exe" "dist/" -Force
+          Copy-Item "build/bin/MID Nano.exe" "stage/" -Force
+          Copy-Item "build/bin/pfc-exp-cli.exe" "stage/" -Force
 
-          windeployqt --release --compiler-runtime "dist/MID Nano.exe"
+          windeployqt --release --compiler-runtime "stage/MID Nano.exe"
 
           # Bundle vcpkg runtime DLLs (needed e.g. for FFTW3).
           $triplet = "x64-windows"
@@ -154,7 +191,7 @@ jobs:
           foreach ($bin in $candidateBins) {
             if (Test-Path $bin) {
               Write-Host "Copying vcpkg runtime DLLs from: $bin"
-              Copy-Item (Join-Path $bin "*.dll") "dist/" -Force
+              Copy-Item (Join-Path $bin "*.dll") "stage/" -Force
               $copiedAny = $true
             }
           }
@@ -162,7 +199,7 @@ jobs:
             Write-Warning "No vcpkg runtime bin directory found; pfc-exp-cli.exe may fail to start if it depends on DLLs."
           }
 
-          $fftw = Get-ChildItem "dist" -Filter "*fftw*.dll" -ErrorAction SilentlyContinue
+          $fftw = Get-ChildItem "stage" -Filter "*fftw*.dll" -ErrorAction SilentlyContinue
           if (-not $fftw) {
             Write-Warning "No FFTW DLL copied to dist. If pfc-exp-cli.exe fails with 0xC0000135, check vcpkg bin path."
           } else {
@@ -170,21 +207,47 @@ jobs:
             $fftw | ForEach-Object { Write-Host "  - $($_.Name)" }
           }
 
-          $out = "MID Nano-$version-${{ matrix.artifact_suffix }}.zip"
-          Compress-Archive -Path "dist/*" -DestinationPath $out -Force
-          "artifact=$out" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $zip = "MID Nano-$version-win-x64.zip"
+          Compress-Archive -Path "stage/*" -DestinationPath (Join-Path "dist" $zip) -Force
+
+          $nsi = Join-Path $env:GITHUB_WORKSPACE "packaging\\windows\\installer.nsi"
+          $outExe = Join-Path $env:GITHUB_WORKSPACE ("dist\\MID Nano-$version-win-x64.exe")
+          $srcDir = Join-Path $env:GITHUB_WORKSPACE "stage"
+          & makensis "/DAPP_VERSION=$version" "/DSOURCE_DIR=$srcDir" "/DOUT_FILE=$outExe" $nsi
+
+      - name: Setup linuxdeploy (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eux
+          mkdir -p tools
+          cd tools
+          curl -L -o linuxdeploy.AppImage "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.linuxdeploy_arch }}.AppImage"
+          curl -L -o linuxdeploy-plugin-qt.AppImage "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-${{ matrix.linuxdeploy_arch }}.AppImage"
+          chmod +x linuxdeploy.AppImage linuxdeploy-plugin-qt.AppImage
+          ln -sf linuxdeploy.AppImage linuxdeploy
+          ln -sf linuxdeploy-plugin-qt.AppImage linuxdeploy-plugin-qt
+          echo "${PWD}" >> "$GITHUB_PATH"
 
       - name: Package (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME}"
-          mkdir -p dist
-          cp "build/bin/MID Nano" "dist/"
-          cp "build/bin/pfc-exp-cli" "dist/"
-          OUT="MID Nano-${VERSION}-${{ matrix.artifact_suffix }}.tar.gz"
-          cmake -E chdir dist cmake -E tar cfvz "../${OUT}" .
-          echo "artifact=${OUT}" >> "$GITHUB_OUTPUT"
+          set -eux
+          chmod +x scripts/package-linux.sh
+
+          QMAKE_BIN="$(command -v qmake6 || command -v qmake || true)"
+          if [[ -n "${QMAKE_BIN}" ]]; then
+            export QMAKE="${QMAKE_BIN}"
+            echo "Using QMAKE=${QMAKE}"
+          fi
+
+          scripts/package-linux.sh \
+            --version "${GITHUB_REF_NAME}" \
+            --deb-arch "${{ matrix.deb_arch }}" \
+            --appimage-arch "${{ matrix.appimage_arch }}" \
+            --build-dir build \
+            --out-dir dist
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
@@ -278,18 +341,24 @@ jobs:
           # Ad-hoc sign the bundle so macOS won't kill the helper due to invalid/inconsistent signatures.
           codesign --force --deep --sign - "${APP}"
 
-          mkdir -p dist
-          cp -R "${APP}" dist/
-          OUT="MID Nano-${VERSION}-${{ matrix.artifact_suffix }}.zip"
-          cmake -E chdir dist cmake -E tar cfv "../${OUT}" --format=zip .
-          echo "artifact=${OUT}" >> "$GITHUB_OUTPUT"
+          mkdir -p stage dist
+          cp -R "${APP}" stage/
+
+          ZIP="MID Nano-${VERSION}-${{ matrix.id }}.zip"
+          DMG="MID Nano-${VERSION}-${{ matrix.id }}.dmg"
+
+          ditto -c -k --sequesterRsrc --keepParent "stage/MID Nano.app" "dist/${ZIP}"
+
+          DMG_ROOT="$(mktemp -d)"
+          cp -R "stage/MID Nano.app" "${DMG_ROOT}/"
+          hdiutil create -volname "MID Nano" -srcfolder "${DMG_ROOT}" -ov -format UDZO "dist/${DMG}"
+          rm -rf "${DMG_ROOT}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_suffix }}
-          path: |
-            MID Nano-${{ github.ref_name }}-${{ matrix.artifact_suffix }}.*
+          name: ${{ matrix.id }}
+          path: dist/*
 
   release:
     if: startsWith(github.ref, 'refs/tags/')

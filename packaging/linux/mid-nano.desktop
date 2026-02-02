@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=MID Nano
+Comment=Experiment parameter GUI for pfc-exp-cli
+Exec=mid-nano
+Icon=mid-nano
+Categories=Science;Education;
+Terminal=false
