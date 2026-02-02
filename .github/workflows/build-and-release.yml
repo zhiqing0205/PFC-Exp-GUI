@@ -33,7 +33,7 @@ jobs:
             os: macos-14
             osx_arch: arm64
           - id: mac-x64
-            os: macos-13
+            os: macos-15-intel
             osx_arch: x86_64
     runs-on: ${{ matrix.os }}
 
@@ -165,6 +165,11 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           choco install nsis -y --no-progress
+          $nsisDir = Join-Path ${env:ProgramFiles(x86)} "NSIS"
+          if (Test-Path $nsisDir) {
+            $nsisDir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+            Write-Host "Added NSIS to PATH: $nsisDir"
+          }
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
@@ -216,7 +221,13 @@ jobs:
           $nsi = Join-Path $env:GITHUB_WORKSPACE "packaging\\windows\\installer.nsi"
           $outExe = Join-Path $env:GITHUB_WORKSPACE ("dist\\MID Nano-$version-win-x64.exe")
           $srcDir = Join-Path $env:GITHUB_WORKSPACE "stage"
-          & makensis "/DAPP_VERSION=$version" "/DSOURCE_DIR=$srcDir" "/DOUT_FILE=$outExe" $nsi
+          $makensis = (Get-Command makensis.exe -ErrorAction SilentlyContinue).Source
+          if (-not $makensis) {
+            $candidate = Join-Path ${env:ProgramFiles(x86)} "NSIS\\makensis.exe"
+            if (Test-Path $candidate) { $makensis = $candidate }
+          }
+          if (-not $makensis) { throw "makensis.exe not found (NSIS not installed or not on PATH)." }
+          & $makensis "/DAPP_VERSION=$version" "/DSOURCE_DIR=$srcDir" "/DOUT_FILE=$outExe" $nsi
 
       - name: Setup linuxdeploy (Linux)
         if: runner.os == 'Linux'

@@ -42,6 +42,10 @@ fi
 APP_NAME="MID Nano"
 APP_ID="mid-nano"
 
+mkdir -p "${OUT_DIR}"
+OUT_DIR="$(cd "${OUT_DIR}" && pwd)"
+BUILD_DIR="$(cd "${BUILD_DIR}" && pwd)"
+
 BIN_GUI="${BUILD_DIR}/bin/${APP_NAME}"
 BIN_CLI="${BUILD_DIR}/bin/pfc-exp-cli"
 
@@ -53,8 +57,6 @@ if [[ ! -f "${BIN_CLI}" ]]; then
   echo "CLI binary not found: ${BIN_CLI}" >&2
   exit 1
 fi
-
-mkdir -p "${OUT_DIR}"
 
 DEB_VERSION="${VERSION#v}"
 
