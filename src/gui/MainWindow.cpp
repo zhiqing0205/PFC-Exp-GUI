@@ -170,22 +170,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     tabs->tabBar()->setDrawBase(false);
     tabs->tabBar()->setExpanding(false);
 
-    auto* singleTab = new QWidget;
-    auto* batchTab = new QWidget;
+    auto* expTab = new QWidget;
     auto* resultsTab = new QWidget;
     auto* manufacturingTab = new QWidget;
     auto* transformationTab = new QWidget;
     auto* mechanicsTab = new QWidget;
 
-    auto* singleScroll = new QScrollArea;
-    singleScroll->setFrameShape(QFrame::NoFrame);
-    singleScroll->setWidgetResizable(true);
-    singleScroll->setWidget(singleTab);
-
-    auto* batchScroll = new QScrollArea;
-    batchScroll->setFrameShape(QFrame::NoFrame);
-    batchScroll->setWidgetResizable(true);
-    batchScroll->setWidget(batchTab);
+    auto* expScroll = new QScrollArea;
+    expScroll->setFrameShape(QFrame::NoFrame);
+    expScroll->setWidgetResizable(true);
+    expScroll->setWidget(expTab);
 
     auto* resultsScroll = new QScrollArea;
     resultsScroll->setFrameShape(QFrame::NoFrame);
@@ -207,8 +201,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     mechanicsScroll->setWidgetResizable(true);
     mechanicsScroll->setWidget(mechanicsTab);
 
-    tabs->addTab(singleScroll, "Single Run");
-    tabs->addTab(batchScroll, "Batch Sweep");
+    tabs->addTab(expScroll, "Experiment");
     tabs->addTab(resultsScroll, "Visualizer");
     tabs->addTab(manufacturingScroll, "Manufacturing");
     tabs->addTab(transformationScroll, "Transformation");
@@ -263,111 +256,18 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     central->setLayout(centralLayout);
     setCentralWidget(central);
 
-    // ---------- Single tab ----------
-    auto* singleLayout = new QVBoxLayout;
-    singleLayout->setSpacing(10);
-    singleTab->setLayout(singleLayout);
+    // ---------- Experiment tab ----------
+    auto* expLayout = new QVBoxLayout;
+    expLayout->setSpacing(10);
+    expTab->setLayout(expLayout);
 
-    auto* singleParamsBox = new QGroupBox("Parameters");
-    auto* singleParamsGrid = new QGridLayout;
-    singleParamsGrid->setVerticalSpacing(6);
-    singleParamsGrid->setHorizontalSpacing(12);
-    singleParamsGrid->setColumnStretch(1, 1);
-    singleParamsGrid->setColumnStretch(3, 1);
-
-    singleU0_ = makeDoubleSpin(-2.0, 2.0, 0.05, 6, 0.01, true);
-    singleCon0_ = makeDoubleSpin(0.0, 1.0, 0.2, 6, 0.01, true);
-    singleSig_ = makeDoubleSpin(0.0, 2.0, 0.05, 6, 0.01, true);
-    singleDt_ = makeDoubleSpin(1e-6, 1.0, 0.05, 6, 0.01, true);
-    singleDx_ = makeDoubleSpin(1e-6, 10.0, 0.125, 6, 0.01, true);
-    singleSteps_ = makeIntSpin(1, 100000000, 200, 10, true);
-    singleMod_ = makeIntSpin(1, 100000000, 25, 1, true);
-    singleSeed_ = makeIntSpin(0, 2147483647, 20200604, 1, true);
-
-    auto addSingleParam = [&](int row, int colPair, const QString& labelText, QWidget* editor) {
-        auto* label = new QLabel(labelText);
-        label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        singleParamsGrid->addWidget(label, row, colPair * 2);
-        singleParamsGrid->addWidget(editor, row, colPair * 2 + 1);
-    };
-
-    addSingleParam(0, 0, "u0", singleU0_);
-    addSingleParam(0, 1, "con0", singleCon0_);
-    addSingleParam(1, 0, "sig", singleSig_);
-    addSingleParam(1, 1, "seed", singleSeed_);
-    addSingleParam(2, 0, "dt", singleDt_);
-    addSingleParam(2, 1, "dx", singleDx_);
-    addSingleParam(3, 0, "steps", singleSteps_);
-    addSingleParam(3, 1, "mod", singleMod_);
-
-    singleParamsBox->setLayout(singleParamsGrid);
-
-    auto* singleOutBox = new QGroupBox("Output");
-    auto* singleOutForm = new QFormLayout;
-    singleBaseOutDir_ = new QLineEdit(defaultBaseOutputDir());
-    singleRunName_ = new QLineEdit;
-    singleRunName_->setPlaceholderText("Optional, e.g. test_run_01 (default: timestamp)");
-
-    auto* singleBrowse = new QToolButton;
-    singleBrowse->setText("Browse…");
-    singleBrowse->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    singleBrowse->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
-    connect(singleBrowse, &QToolButton::clicked, this, &MainWindow::browseSingleOutDir);
-
-    auto* baseOutRow = new QWidget;
-    auto* baseOutRowLayout = new QHBoxLayout;
-    baseOutRowLayout->setContentsMargins(0, 0, 0, 0);
-    baseOutRowLayout->addWidget(singleBaseOutDir_, 1);
-    baseOutRowLayout->addWidget(singleBrowse);
-    baseOutRow->setLayout(baseOutRowLayout);
-
-    singleOutForm->addRow("Base output dir", baseOutRow);
-    singleOutForm->addRow("Run folder name", singleRunName_);
-    singleOutBox->setLayout(singleOutForm);
-
-    auto* singleButtons = new QWidget;
-    auto* singleButtonsLayout = new QHBoxLayout;
-    singleButtonsLayout->setContentsMargins(0, 0, 0, 0);
-    auto* singleRun = new QPushButton("Run");
-    auto* singleStop = new QPushButton("Stop");
-    auto* openOut = new QPushButton("Open Output");
-    singleRun->setProperty("primary", true);
-    singleStop->setProperty("danger", true);
-    singleRun->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
-    singleStop->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
-    openOut->setIcon(style()->standardIcon(QStyle::SP_DirOpenIcon));
-    connect(singleRun, &QPushButton::clicked, this, &MainWindow::startSingleRun);
-    connect(singleStop, &QPushButton::clicked, this, &MainWindow::stopRun);
-    connect(openOut, &QPushButton::clicked, this, &MainWindow::openCurrentOutputDir);
-    singleButtonsLayout->addWidget(singleRun);
-    singleButtonsLayout->addWidget(singleStop);
-    singleButtonsLayout->addStretch(1);
-    singleButtonsLayout->addWidget(openOut);
-    singleButtons->setLayout(singleButtonsLayout);
-
-    singleStepProgress_ = new QProgressBar;
-    singleStepProgress_->setRange(0, 1);
-    singleStepProgress_->setValue(0);
-    singleStepProgress_->setFormat("Step %v / %m");
-    singleStepProgress_->setTextVisible(true);
-
-    singleLayout->addWidget(singleParamsBox);
-    singleLayout->addWidget(singleOutBox);
-    singleLayout->addWidget(singleButtons);
-    singleLayout->addWidget(singleStepProgress_);
-    singleLayout->addStretch(1);
-
-    // ---------- Batch tab ----------
-    auto* batchLayout = new QVBoxLayout;
-    batchLayout->setSpacing(10);
-    batchTab->setLayout(batchLayout);
-
-    auto* batchHint = new QLabel(
-        "Batch Sweep: for each parameter choose Fixed / Range / List.\n"
+    auto* expHint = new QLabel(
+        "Experiment: choose Fixed / Range / List for each parameter.\n"
+        "• If all parameters are Fixed, it behaves like a single run.\n"
         "• Range: Start/End/Step -> preview as comma-separated values\n"
         "• List: comma-separated values, e.g. 0.05,0.10,0.15");
-    batchHint->setProperty("hint", true);
-    batchHint->setWordWrap(true);
+    expHint->setProperty("hint", true);
+    expHint->setWordWrap(true);
 
     auto header = [](const QString& text) {
         auto* l = new QLabel(text);
@@ -378,34 +278,34 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         return l;
     };
 
-    auto* batchParamsBox = new QGroupBox("Parameters");
-    auto* batchParamsGrid = new QGridLayout;
-    batchParamsGrid->setVerticalSpacing(6);
-    batchParamsGrid->setHorizontalSpacing(12);
-    batchParamsGrid->setColumnStretch(2, 1);
+    auto* expParamsBox = new QGroupBox("Parameters");
+    auto* expParamsGrid = new QGridLayout;
+    expParamsGrid->setVerticalSpacing(6);
+    expParamsGrid->setHorizontalSpacing(12);
+    expParamsGrid->setColumnStretch(2, 1);
 
-    batchParamsGrid->addWidget(header("Param"), 0, 0);
-    batchParamsGrid->addWidget(header("Mode"), 0, 1);
-    batchParamsGrid->addWidget(header("Values"), 0, 2);
+    expParamsGrid->addWidget(header("Param"), 0, 0);
+    expParamsGrid->addWidget(header("Mode"), 0, 1);
+    expParamsGrid->addWidget(header("Values"), 0, 2);
 
-    batchParams_.clear();
-    batchParams_.reserve(16);
+    sweepParams_.clear();
+    sweepParams_.reserve(16);
 
     auto connectSpinChanged = [this](QObject* w) {
         if (!w) return;
         if (auto* d = qobject_cast<QDoubleSpinBox*>(w)) {
-            connect(d, &QDoubleSpinBox::valueChanged, this, &MainWindow::updateBatchPreview);
+            connect(d, &QDoubleSpinBox::valueChanged, this, &MainWindow::updateExperimentPreview);
         } else if (auto* s = qobject_cast<QSpinBox*>(w)) {
-            connect(s, &QSpinBox::valueChanged, this, &MainWindow::updateBatchPreview);
+            connect(s, &QSpinBox::valueChanged, this, &MainWindow::updateExperimentPreview);
         } else if (auto* e = qobject_cast<QLineEdit*>(w)) {
-            connect(e, &QLineEdit::textChanged, this, &MainWindow::updateBatchPreview);
+            connect(e, &QLineEdit::textChanged, this, &MainWindow::updateExperimentPreview);
         } else if (auto* c = qobject_cast<QComboBox*>(w)) {
-            connect(c, &QComboBox::currentIndexChanged, this, &MainWindow::updateBatchPreview);
+            connect(c, &QComboBox::currentIndexChanged, this, &MainWindow::updateExperimentPreview);
         }
     };
 
     auto addDoubleParam = [&](const QString& key, const QString& labelText, double minV, double maxV, double defV, int decimals, double stepV) {
-        BatchParamWidgets p;
+        SweepParamWidgets p;
         p.key = key;
         p.label = labelText;
         p.isInt = false;
@@ -479,15 +379,15 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         connectSpinChanged(p.rangeStepDouble);
         connectSpinChanged(p.listEdit);
 
-        const int row = batchParamsGrid->rowCount();
-        batchParamsGrid->addWidget(name, row, 0);
-        batchParamsGrid->addWidget(p.mode, row, 1);
-        batchParamsGrid->addWidget(p.stack, row, 2);
-        batchParams_.push_back(p);
+        const int row = expParamsGrid->rowCount();
+        expParamsGrid->addWidget(name, row, 0);
+        expParamsGrid->addWidget(p.mode, row, 1);
+        expParamsGrid->addWidget(p.stack, row, 2);
+        sweepParams_.push_back(p);
     };
 
     auto addIntParam = [&](const QString& key, const QString& labelText, int minV, int maxV, int defV, int stepV, const QString& listPlaceholder) {
-        BatchParamWidgets p;
+        SweepParamWidgets p;
         p.key = key;
         p.label = labelText;
         p.isInt = true;
@@ -554,11 +454,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         connectSpinChanged(p.rangeStepInt);
         connectSpinChanged(p.listEdit);
 
-        const int row = batchParamsGrid->rowCount();
-        batchParamsGrid->addWidget(name, row, 0);
-        batchParamsGrid->addWidget(p.mode, row, 1);
-        batchParamsGrid->addWidget(p.stack, row, 2);
-        batchParams_.push_back(p);
+        const int row = expParamsGrid->rowCount();
+        expParamsGrid->addWidget(name, row, 0);
+        expParamsGrid->addWidget(p.mode, row, 1);
+        expParamsGrid->addWidget(p.stack, row, 2);
+        sweepParams_.push_back(p);
     };
 
     // Order matters for the Cartesian product (outer -> inner).
@@ -572,70 +472,70 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     addIntParam("mod", "mod", 1, 100000000, 25, 1, "e.g. 25,50,100");
     addIntParam("seed", "seed", 0, 2147483647, 20200604, 1, "e.g. 1,2,3");
 
-    batchParamsBox->setLayout(batchParamsGrid);
+    expParamsBox->setLayout(expParamsGrid);
 
-    auto* batchOutBox = new QGroupBox("Output");
-    auto* batchOutForm = new QFormLayout;
-    batchBaseOutDir_ = new QLineEdit(defaultBaseOutputDir());
-    batchName_ = new QLineEdit;
-    batchName_->setPlaceholderText("Optional (default: timestamp)");
-    auto* batchBrowse = new QToolButton;
-    batchBrowse->setText("Browse…");
-    batchBrowse->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    batchBrowse->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
-    connect(batchBrowse, &QToolButton::clicked, this, &MainWindow::browseBatchOutDir);
+    auto* expOutBox = new QGroupBox("Output");
+    auto* expOutForm = new QFormLayout;
+    expBaseOutDir_ = new QLineEdit(defaultBaseOutputDir());
+    expName_ = new QLineEdit;
+    expName_->setPlaceholderText("Optional (default: timestamp)");
+    auto* expBrowse = new QToolButton;
+    expBrowse->setText("Browse…");
+    expBrowse->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    expBrowse->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
+    connect(expBrowse, &QToolButton::clicked, this, &MainWindow::browseExperimentOutDir);
 
-    auto* batchBaseRow = new QWidget;
-    auto* batchBaseRowLayout = new QHBoxLayout;
-    batchBaseRowLayout->setContentsMargins(0, 0, 0, 0);
-    batchBaseRowLayout->addWidget(batchBaseOutDir_, 1);
-    batchBaseRowLayout->addWidget(batchBrowse);
-    batchBaseRow->setLayout(batchBaseRowLayout);
+    auto* expBaseRow = new QWidget;
+    auto* expBaseRowLayout = new QHBoxLayout;
+    expBaseRowLayout->setContentsMargins(0, 0, 0, 0);
+    expBaseRowLayout->addWidget(expBaseOutDir_, 1);
+    expBaseRowLayout->addWidget(expBrowse);
+    expBaseRow->setLayout(expBaseRowLayout);
 
-    batchOutForm->addRow("Base output dir", batchBaseRow);
-    batchOutForm->addRow("Batch folder name", batchName_);
-    batchOutBox->setLayout(batchOutForm);
+    expOutForm->addRow("Base output dir", expBaseRow);
+    expOutForm->addRow("Experiment folder name", expName_);
+    expOutBox->setLayout(expOutForm);
 
-    batchPreview_ = new QLabel;
-    batchPreview_->setProperty("hint", true);
-    batchPreview_->setWordWrap(true);
-    batchStepProgress_ = new QProgressBar;
-    batchStepProgress_->setRange(0, 1);
-    batchStepProgress_->setValue(0);
-    batchStepProgress_->setFormat("Run step %v / %m");
-    batchStepProgress_->setTextVisible(true);
-    batchProgress_ = new QProgressBar;
-    batchProgress_->setRange(0, 100);
-    batchProgress_->setValue(0);
+    expPreview_ = new QLabel;
+    expPreview_->setProperty("hint", true);
+    expPreview_->setWordWrap(true);
+    expStepProgress_ = new QProgressBar;
+    expStepProgress_->setRange(0, 1);
+    expStepProgress_->setValue(0);
+    expStepProgress_->setFormat("Step %v / %m");
+    expStepProgress_->setTextVisible(true);
+    expProgress_ = new QProgressBar;
+    expProgress_->setRange(0, 100);
+    expProgress_->setValue(0);
 
-    auto* batchButtons = new QWidget;
-    auto* batchButtonsLayout = new QHBoxLayout;
-    batchButtonsLayout->setContentsMargins(0, 0, 0, 0);
-    auto* batchRun = new QPushButton("Run Batch");
-    auto* batchStop = new QPushButton("Stop");
-    auto* openOut2 = new QPushButton("Open Output");
-    batchRun->setProperty("primary", true);
-    batchStop->setProperty("danger", true);
-    batchRun->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
-    batchStop->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
-    openOut2->setIcon(style()->standardIcon(QStyle::SP_DirOpenIcon));
-    connect(batchRun, &QPushButton::clicked, this, &MainWindow::startBatchRun);
-    connect(batchStop, &QPushButton::clicked, this, &MainWindow::stopRun);
-    connect(openOut2, &QPushButton::clicked, this, &MainWindow::openCurrentOutputDir);
-    batchButtonsLayout->addWidget(batchRun);
-    batchButtonsLayout->addWidget(batchStop);
-    batchButtonsLayout->addStretch(1);
-    batchButtonsLayout->addWidget(openOut2);
-    batchButtons->setLayout(batchButtonsLayout);
+    auto* expButtons = new QWidget;
+    auto* expButtonsLayout = new QHBoxLayout;
+    expButtonsLayout->setContentsMargins(0, 0, 0, 0);
+    auto* expRun = new QPushButton("Run");
+    auto* expStop = new QPushButton("Stop");
+    auto* expOpenOut = new QPushButton("Open Output");
+    expRun->setProperty("primary", true);
+    expStop->setProperty("danger", true);
+    expRun->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
+    expStop->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
+    expOpenOut->setIcon(style()->standardIcon(QStyle::SP_DirOpenIcon));
+    connect(expRun, &QPushButton::clicked, this, &MainWindow::startExperiment);
+    connect(expStop, &QPushButton::clicked, this, &MainWindow::stopRun);
+    connect(expOpenOut, &QPushButton::clicked, this, &MainWindow::openCurrentOutputDir);
+    expButtonsLayout->addWidget(expRun);
+    expButtonsLayout->addWidget(expStop);
+    expButtonsLayout->addStretch(1);
+    expButtonsLayout->addWidget(expOpenOut);
+    expButtons->setLayout(expButtonsLayout);
 
-    batchLayout->addWidget(batchHint);
-    batchLayout->addWidget(batchParamsBox);
-    batchLayout->addWidget(batchPreview_);
-    batchLayout->addWidget(batchOutBox);
-    batchLayout->addWidget(batchStepProgress_);
-    batchLayout->addWidget(batchProgress_);
-    batchLayout->addWidget(batchButtons);
-    batchLayout->addStretch(1);
+    expLayout->addWidget(expHint);
+    expLayout->addWidget(expParamsBox);
+    expLayout->addWidget(expPreview_);
+    expLayout->addWidget(expOutBox);
+    expLayout->addWidget(expStepProgress_);
+    expLayout->addWidget(expProgress_);
+    expLayout->addWidget(expButtons);
+    expLayout->addStretch(1);
 
     // ---------- Results tab ----------
     auto* resultsLayout = new QVBoxLayout;
@@ -877,10 +777,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             << "Batch sweep on loading rate / amplitude");
 
     refreshResultsFileList();
-    if (batchName_) connect(batchName_, &QLineEdit::textChanged, this, &MainWindow::updateBatchPreview);
-    if (batchBaseOutDir_) connect(batchBaseOutDir_, &QLineEdit::textChanged, this, &MainWindow::updateBatchPreview);
+    if (expName_) connect(expName_, &QLineEdit::textChanged, this, &MainWindow::updateExperimentPreview);
+    if (expBaseOutDir_) connect(expBaseOutDir_, &QLineEdit::textChanged, this, &MainWindow::updateExperimentPreview);
 
-    updateBatchPreview();
+    updateExperimentPreview();
     setRunningUi(false);
 }
 
@@ -1688,19 +1588,6 @@ void MainWindow::exportResultsImage() {
     appendLog("=== Visualizer: Export OK ===");
 }
 
-RunParams MainWindow::singleParams() const {
-    RunParams p;
-    p.u0 = singleU0_->value();
-    p.con0 = singleCon0_->value();
-    p.sig = singleSig_->value();
-    p.dt = singleDt_->value();
-    p.dx = singleDx_->value();
-    p.steps = singleSteps_->value();
-    p.mod = singleMod_->value();
-    p.seed = singleSeed_->value();
-    return p;
-}
-
 QStringList MainWindow::buildArgs(const RunParams& params, const QString& outDir) const {
     auto f = [](double v) { return QString::number(v, 'g', 10); };
     QStringList args;
@@ -1863,17 +1750,17 @@ static QString joinPreviewInts(const QVector<int>& values, int maxItems = 64) {
     return s;
 }
 
-QVector<RunJob> MainWindow::buildBatchJobs(const QString& baseDir, const QString& batchName, QString* errorOut) const {
+QVector<RunJob> MainWindow::buildExperimentJobs(const QString& baseDir, const QString& experimentName, QString* errorOut) const {
     const int maxRuns = 5000;
     if (baseDir.trimmed().isEmpty()) {
         if (errorOut) *errorOut = "Base output dir is empty.";
         return {};
     }
-    if (batchName.trimmed().isEmpty()) {
-        if (errorOut) *errorOut = "Batch folder name is empty.";
+    if (experimentName.trimmed().isEmpty()) {
+        if (errorOut) *errorOut = "Experiment folder name is empty.";
         return {};
     }
-    const QString batchRoot = QDir(baseDir).filePath(batchName);
+    const QString experimentRoot = QDir(baseDir).filePath(experimentName);
 
     struct ParamValues {
         QString key;
@@ -1883,9 +1770,9 @@ QVector<RunJob> MainWindow::buildBatchJobs(const QString& baseDir, const QString
     };
 
     QVector<ParamValues> params;
-    params.reserve(batchParams_.size());
+    params.reserve(sweepParams_.size());
 
-    auto addValuesOrFail = [&](const BatchParamWidgets& p) -> bool {
+    auto addValuesOrFail = [&](const SweepParamWidgets& p) -> bool {
         if (!p.mode || !p.stack) return true;
 
         const int mode = p.mode->currentIndex(); // 0 fixed, 1 range, 2 list
@@ -1952,7 +1839,7 @@ QVector<RunJob> MainWindow::buildBatchJobs(const QString& baseDir, const QString
         return true;
     };
 
-    for (const auto& p : batchParams_) {
+    for (const auto& p : sweepParams_) {
         if (!addValuesOrFail(p)) return {};
     }
 
@@ -2003,11 +1890,15 @@ QVector<RunJob> MainWindow::buildBatchJobs(const QString& baseDir, const QString
 
         const int idx = static_cast<int>(i) + 1;
         RunJob job;
-        job.mode = "batch";
+        job.mode = "experiment";
         job.index = idx;
         job.total = static_cast<int>(total);
         job.params = rp;
-        job.outDir = QDir(batchRoot).filePath(QString("run_%1").arg(idx, 4, 10, QChar('0')));
+        if (total <= 1) {
+            job.outDir = experimentRoot;
+        } else {
+            job.outDir = QDir(experimentRoot).filePath(QString("run_%1").arg(idx, 4, 10, QChar('0')));
+        }
         jobs.push_back(job);
 
         // Odometer increment (last param changes fastest).
@@ -2085,16 +1976,9 @@ void MainWindow::launchJob(const RunJob& job) {
     processOutputBuffer_.clear();
     currentJobMode_ = actual.mode;
     currentJobTotalSteps_ = std::max(0, actual.params.steps);
-    if (actual.mode == "single") {
-        if (singleStepProgress_) {
-            singleStepProgress_->setRange(0, std::max(1, actual.params.steps));
-            singleStepProgress_->setValue(0);
-        }
-    } else if (actual.mode == "batch") {
-        if (batchStepProgress_) {
-            batchStepProgress_->setRange(0, std::max(1, actual.params.steps));
-            batchStepProgress_->setValue(0);
-        }
+    if (expStepProgress_) {
+        expStepProgress_->setRange(0, std::max(1, actual.params.steps));
+        expStepProgress_->setValue(0);
     }
 
     connect(process_, &QProcess::readyRead, this, &MainWindow::onProcessReadyRead);
@@ -2108,50 +1992,27 @@ void MainWindow::launchJob(const RunJob& job) {
     process_->start();
 }
 
-void MainWindow::startSingleRun() {
+void MainWindow::startExperiment() {
     if (process_) {
         QMessageBox::warning(this, "Busy", "A run is already in progress.");
         return;
     }
+    const QString baseDir = expBaseOutDir_ ? expBaseOutDir_->text().trimmed() : QString();
+    const QString experimentName =
+        (expName_ && !expName_->text().trimmed().isEmpty()) ? expName_->text().trimmed() : makeTimestampedDirName("exp");
 
     QString err;
-    if (!ensureDir(singleBaseOutDir_->text(), &err)) {
-        QMessageBox::critical(this, "Output error", err);
-        return;
-    }
-
-    const QString runName = singleRunName_->text().trimmed().isEmpty() ? makeTimestampedDirName("single") : singleRunName_->text().trimmed();
-    const QString outDir = QDir(singleBaseOutDir_->text()).filePath(runName);
-
-    RunJob job;
-    job.mode = "single";
-    job.index = 1;
-    job.total = 1;
-    job.params = singleParams();
-    job.outDir = outDir;
-    launchJob(job);
-}
-
-void MainWindow::startBatchRun() {
-    if (process_) {
-        QMessageBox::warning(this, "Busy", "A run is already in progress.");
-        return;
-    }
-    const QString baseDir = batchBaseOutDir_->text().trimmed();
-    const QString batchName = batchName_->text().trimmed().isEmpty() ? makeTimestampedDirName("batch") : batchName_->text().trimmed();
-
-    QString err;
-    jobQueue_ = buildBatchJobs(baseDir, batchName, &err);
+    jobQueue_ = buildExperimentJobs(baseDir, experimentName, &err);
     if (!err.isEmpty()) {
-        QMessageBox::critical(this, "Batch config error", err);
+        QMessageBox::critical(this, "Experiment config error", err);
         return;
     }
     if (jobQueue_.isEmpty()) {
-        QMessageBox::warning(this, "Batch", "No runs to execute.");
+        QMessageBox::warning(this, "Experiment", "No runs to execute.");
         return;
     }
     currentJobIndex_ = 0;
-    batchProgress_->setValue(0);
+    if (expProgress_) expProgress_->setValue(0);
     launchJob(jobQueue_.at(currentJobIndex_));
 }
 
@@ -2160,38 +2021,34 @@ void MainWindow::stopRun() {
     currentJobIndex_ = -1;
     currentJobMode_.clear();
     currentJobTotalSteps_ = 0;
-    if (singleStepProgress_) singleStepProgress_->setValue(0);
-    if (batchStepProgress_) batchStepProgress_->setValue(0);
-    if (batchProgress_) batchProgress_->setValue(0);
+    if (expStepProgress_) expStepProgress_->setValue(0);
+    if (expProgress_) expProgress_->setValue(0);
     if (!process_) return;
     appendLog("=== Stop requested ===");
     process_->kill();
 }
 
-void MainWindow::browseSingleOutDir() {
-    const QString dir = QFileDialog::getExistingDirectory(this, "Select output directory", singleBaseOutDir_->text());
-    if (!dir.isEmpty()) singleBaseOutDir_->setText(dir);
-}
-
-void MainWindow::browseBatchOutDir() {
-    const QString dir = QFileDialog::getExistingDirectory(this, "Select output directory", batchBaseOutDir_->text());
-    if (!dir.isEmpty()) batchBaseOutDir_->setText(dir);
+void MainWindow::browseExperimentOutDir() {
+    if (!expBaseOutDir_) return;
+    const QString base = expBaseOutDir_->text().trimmed();
+    const QString dir = pickExistingDirectory(this, "Select output directory", base.isEmpty() ? defaultBaseOutputDir() : base);
+    if (!dir.isEmpty()) expBaseOutDir_->setText(dir);
 }
 
 void MainWindow::openCurrentOutputDir() {
-    const QString dir = currentOutputDir_.isEmpty() ? singleBaseOutDir_->text() : currentOutputDir_;
+    const QString dir = currentOutputDir_.isEmpty() ? (expBaseOutDir_ ? expBaseOutDir_->text() : QString()) : currentOutputDir_;
     if (dir.trimmed().isEmpty()) return;
     QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
 }
 
-void MainWindow::updateBatchPreview() {
-    if (!batchPreview_) return;
+void MainWindow::updateExperimentPreview() {
+    if (!expPreview_) return;
     const int maxRuns = 5000;
 
     long long total = 1;
     QStringList varied;
 
-    for (auto& p : batchParams_) {
+    for (auto& p : sweepParams_) {
         if (!p.mode || !p.stack) continue;
 
         const int mode = p.mode->currentIndex(); // 0 fixed, 1 range, 2 list
@@ -2216,12 +2073,12 @@ void MainWindow::updateBatchPreview() {
             }
 
             if (!err.isEmpty()) {
-                batchPreview_->setText("Batch preview: " + p.key + ": " + err);
+                expPreview_->setText("Preview: " + p.key + ": " + err);
                 return;
             }
             for (const int v : vals) {
                 if (v < minV || v > maxV) {
-                    batchPreview_->setText(QString("Batch preview: %1: value %2 out of range [%3, %4].")
+                    expPreview_->setText(QString("Preview: %1: value %2 out of range [%3, %4].")
                                                .arg(p.key)
                                                .arg(v)
                                                .arg(minV)
@@ -2246,12 +2103,12 @@ void MainWindow::updateBatchPreview() {
             }
 
             if (!err.isEmpty()) {
-                batchPreview_->setText("Batch preview: " + p.key + ": " + err);
+                expPreview_->setText("Preview: " + p.key + ": " + err);
                 return;
             }
             for (const double v : vals) {
                 if (!(v >= minV - 1e-12 && v <= maxV + 1e-12)) {
-                    batchPreview_->setText(QString("Batch preview: %1: value %2 out of range [%3, %4].")
+                    expPreview_->setText(QString("Preview: %1: value %2 out of range [%3, %4].")
                                                .arg(p.key)
                                                .arg(QString::number(v, 'g', 12))
                                                .arg(QString::number(minV, 'g', 12))
@@ -2263,7 +2120,7 @@ void MainWindow::updateBatchPreview() {
         }
 
         if (count <= 0) {
-            batchPreview_->setText("Batch preview: No runs to execute.");
+            expPreview_->setText("Preview: No runs to execute.");
             return;
         }
 
@@ -2278,12 +2135,12 @@ void MainWindow::updateBatchPreview() {
 
     QString msg;
     if (total > maxRuns) {
-        msg = QString("Batch preview: too many runs (> %1). Reduce ranges/lists.").arg(maxRuns);
+        msg = QString("Preview: too many runs (> %1). Reduce ranges/lists.").arg(maxRuns);
     } else {
-        msg = QString("Batch preview: %1 run(s).").arg(total);
+        msg = QString("Preview: %1 run(s).").arg(total);
     }
     if (!varied.isEmpty()) msg += " " + varied.join(", ");
-    batchPreview_->setText(msg);
+    expPreview_->setText(msg);
 }
 
 void MainWindow::onProcessReadyRead() {
@@ -2305,16 +2162,11 @@ void MainWindow::onProcessReadyRead() {
             const int step = m.captured(1).toInt();
             const int total = m.captured(2).toInt();
 
-            if (currentJobMode_ == "single" && singleStepProgress_) {
-                if (total > 0 && singleStepProgress_->maximum() != total) {
-                    singleStepProgress_->setRange(0, total);
+            if (expStepProgress_) {
+                if (total > 0 && expStepProgress_->maximum() != total) {
+                    expStepProgress_->setRange(0, total);
                 }
-                singleStepProgress_->setValue(std::clamp(step, 0, singleStepProgress_->maximum()));
-            } else if (currentJobMode_ == "batch" && batchStepProgress_) {
-                if (total > 0 && batchStepProgress_->maximum() != total) {
-                    batchStepProgress_->setRange(0, total);
-                }
-                batchStepProgress_->setValue(std::clamp(step, 0, batchStepProgress_->maximum()));
+                expStepProgress_->setValue(std::clamp(step, 0, expStepProgress_->maximum()));
             }
             continue;
         }
@@ -2350,15 +2202,11 @@ void MainWindow::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus
     process_ = nullptr;
 
     if (ok) {
-        if (currentJobMode_ == "single" && singleStepProgress_) {
-            singleStepProgress_->setValue(singleStepProgress_->maximum());
-        } else if (currentJobMode_ == "batch" && batchStepProgress_) {
-            batchStepProgress_->setValue(batchStepProgress_->maximum());
-        }
+        if (expStepProgress_) expStepProgress_->setValue(expStepProgress_->maximum());
     }
 
     if (jobQueue_.isEmpty() || currentJobIndex_ < 0) {
-        batchProgress_->setValue(0);
+        if (expProgress_) expProgress_->setValue(0);
         currentJobIndex_ = -1;
         currentJobMode_.clear();
         currentJobTotalSteps_ = 0;
@@ -2367,10 +2215,10 @@ void MainWindow::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus
 
     const int total = jobQueue_.size();
     const int done = currentJobIndex_ + 1;
-    batchProgress_->setValue(static_cast<int>(100.0 * done / total));
+    if (expProgress_) expProgress_->setValue(static_cast<int>(100.0 * done / total));
 
     if (!ok) {
-        appendLog("=== Batch aborted due to failure ===");
+        appendLog("=== Experiment aborted due to failure ===");
         jobQueue_.clear();
         currentJobIndex_ = -1;
         return;
@@ -2378,10 +2226,10 @@ void MainWindow::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus
 
     ++currentJobIndex_;
     if (currentJobIndex_ >= total) {
-        appendLog("=== Batch complete ===");
+        appendLog("=== Experiment complete ===");
         jobQueue_.clear();
         currentJobIndex_ = -1;
-        batchProgress_->setValue(100);
+        if (expProgress_) expProgress_->setValue(100);
         currentJobMode_.clear();
         currentJobTotalSteps_ = 0;
         return;

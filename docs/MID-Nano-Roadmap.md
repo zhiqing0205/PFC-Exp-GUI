@@ -8,11 +8,11 @@
 
 ### 手册结构对齐
 - [x] 增加完整手册草案：`docs/MID-Nano-Guide.md`（含截图占位与标注说明）
-- [ ] 统一术语与命名：界面名称（Single/Batch/Visualizer）、参数名（u0/con0/steps/mod/seed 等）
+- [ ] 统一术语与命名：界面名称（Experiment/Visualizer）、参数名（u0/con0/steps/mod/seed 等）
 - [ ] 增加“版本信息/更新日志”表格：建议自动从 tag 生成，或手动维护一份简表
 
 ### 现有文档一致性
-- [x] 更新 `docs/usage.md` 与 `docs/gui_tabs.md`：与当前 UI 保持一致（特别是 Batch Sweep 的 Fixed/Range/List 模式、Visualizer 的 Plot/Table 逻辑、缩放/拖动方式）
+- [x] 更新 `docs/usage.md` 与 `docs/gui_tabs.md`：与当前 UI 保持一致（特别是 Experiment 的 Fixed/Range/List 模式、Visualizer 的 Plot/Table 逻辑、缩放/拖动方式）
 - [x] 更新 `README.md` 的功能描述：避免继续写成 “仅 u0/con0/steps 扫参”
 
 ### 截图与标注规范

@@ -32,12 +32,12 @@ MID Nano 是一个用于配置实验参数、运行 `pfc-exp-cli` 并查看输�
 
 ### 4. 用户界面概览
 #### 4.1 主窗口布局
-#### 4.2 标签页说明（Single Run / Batch Sweep / Visualizer）
+#### 4.2 标签页说明（Experiment / Visualizer）
 #### 4.3 日志（Log）与进度条（Progress）
 
 ### 5. 核心功能操作指南
-#### 5.1 单次实验（Single Run）
-#### 5.2 批量扫参（Batch Sweep）
+#### 5.1 实验（Experiment：固定参数）
+#### 5.2 实验（Experiment：扫参组合）
 #### 5.3 输出查看（Visualizer）
 #### 5.4 输出目录与文件说明
 
@@ -169,9 +169,7 @@ MID Nano 为绿色版。卸载时直接删除程序目录即可。输出目录�
 
 ### 4.2 标签页说明
 
-**Single Run（单次实验）**：配置一组参数并运行一次。
-
-**Batch Sweep（批量扫参）**：每个参数可选 Fixed / Range / List，自动组合生成多组任务依次运行。
+**Experiment（实验/扫参）**：每个参数可选 Fixed / Range / List；当全部为 Fixed 时等价于单次实验，当任意参数使用 Range/List 且产生多值时会自动组合生成多组任务依次运行。
 
 **Visualizer（结果查看）**：查看 `*.txt` 输出；对 `Phimax_*.txt` 提供热图渲染与 PNG 导出。
 
@@ -180,26 +178,26 @@ MID Nano 为绿色版。卸载时直接删除程序目录即可。输出目录�
 ### 4.3 日志（Log）与进度条（Progress）
 
 - `Log` 会打印每次运行的输出目录、执行命令、CLI 输出与错误提示。
-- 单次运行显示 step 进度条；批量运行显示“当前 run 的 step 进度”与“整体 run 进度”。
+- Experiment 会显示“当前 run 的 step 进度”；当总运行数 > 1 时，还会显示“整体 run 进度”（按队列完成比例更新）。
 
 ---
 
 ## 5. 核心功能操作指南
 
-### 5.1 单次实验（Single Run）
+### 5.1 实验（Experiment：固定参数）
 
 1. 在 `Parameters` 中设置参数（建议先从小步数开始验证流程）。
-2. 在 `Output` 中选择输出根目录，并可选填写 `Run folder name`。
+2. 在 `Output` 中选择输出根目录，并可选填写 `Experiment folder name`。
 3. 点击 `Run` 开始运行；需要中止时点击 `Stop`。
 4. 点击 `Open Output` 可直接打开当前输出目录。
 
-> （截图占位：Single Run 参数区）
+> （截图占位：Experiment（固定参数）参数区）
 >
-> 建议标注：① 关键参数（u0/con0/steps/mod/seed）；② Run/Stop；③ Step 进度条。
+> 建议标注：① 关键参数（u0/con0/steps/mod/seed）；② Run/Stop；③ Step 进度条；④ Preview（1 run）。
 
-### 5.2 批量扫参（Batch Sweep）
+### 5.2 实验（Experiment：扫参组合）
 
-Batch Sweep 的“参数模式”支持三种：
+Experiment 的“参数模式”支持三种：
 
 - **Fixed**：固定单个值。
 - **Range**：通过 Start/End/Step 生成序列（右侧会显示生成的列表预览）。
@@ -207,9 +205,9 @@ Batch Sweep 的“参数模式”支持三种：
 
 GUI 会对所有参数的序列做笛卡尔积组合，生成任务队列并依次运行。
 
-> （截图占位：Batch Sweep 参数表）
+> （截图占位：Experiment（扫参组合）参数表）
 >
-> 建议标注：① Param 列；② Mode 下拉框；③ Range/List 输入与预览；④ Batch preview（总运行数）。
+> 建议标注：① Param 列；② Mode 下拉框；③ Range/List 输入与预览；④ Preview（总运行数）；⑤ 整体 run 进度条。
 
 ### 5.3 输出查看（Visualizer）
 
@@ -296,4 +294,3 @@ GUI 会对所有参数的序列做笛卡尔积组合，生成任务队列并依�
 - `Plot` 热图缩放：滚轮缩放。
 - `Plot` 热图平移：鼠标左键按住拖动。
 - 目录快速定位：`Open Output` 打开当前输出目录。
-

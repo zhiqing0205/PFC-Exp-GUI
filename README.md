@@ -4,13 +4,12 @@
 
 ## 组成
 
-- `MID Nano`：图形界面（单次实验 + 批量扫参）
+- `MID Nano`：图形界面（Experiment：固定参数/扫参，Fixed / Range / List）
 - `pfc-exp-cli`：实验程序命令行版本（参数通过命令行传入，输出写入指定目录）
 
 ## 功能
 
-- 单次实验：配置 `u0`（密度/序参量均值）、`con0`（浓度）、`steps`（迭代步数）等参数并运行。
-- 批量实验：每个参数可选择 Fixed / Range / List（固定/范围/列表），按笛卡尔积组合后顺序运行多组实验。
+- 实验（Experiment）：每个参数可选择 Fixed / Range / List（固定/范围/列表），按笛卡尔积组合后顺序运行多组实验；当全部为 Fixed 时等价于单次实验。
 - 可视化：查看输出目录中的 `*.txt`；对 `Phimax_*.txt` 等快照可渲染热图并导出 PNG。
 - 每次运行都会在输出目录写入 `params.json`（GUI 生成）与 `run_config.txt`（CLI 写入）。
 
@@ -61,8 +60,7 @@ cmake --build build --config Release
 
 运行 `MID Nano`（确保同目录下存在 `pfc-exp-cli`），在界面中填写参数与输出目录：
 
-- Single Run：单次运行
-- Batch Sweep：扫参批量运行（逐参数 Fixed / Range / List）
+- Experiment：固定参数/扫参（逐参数 Fixed / Range / List）
 - Visualizer：结果查看（Table / Plot）
 
 ### CLI

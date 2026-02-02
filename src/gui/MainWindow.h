@@ -47,13 +47,11 @@ public:
     explicit MainWindow(QWidget* parent = nullptr);
 
 private slots:
-    void startSingleRun();
-    void startBatchRun();
+    void startExperiment();
     void stopRun();
-    void browseSingleOutDir();
-    void browseBatchOutDir();
+    void browseExperimentOutDir();
     void openCurrentOutputDir();
-    void updateBatchPreview();
+    void updateExperimentPreview();
 
     void onProcessReadyRead();
     void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
@@ -66,8 +64,7 @@ private:
     QString makeTimestampedDirName(const QString& prefix) const;
     QString formatRunLabel(int index, int total) const;
 
-    RunParams singleParams() const;
-    QVector<RunJob> buildBatchJobs(const QString& baseDir, const QString& batchName, QString* errorOut) const;
+    QVector<RunJob> buildExperimentJobs(const QString& baseDir, const QString& experimentName, QString* errorOut) const;
     QStringList buildArgs(const RunParams& params, const QString& outDir) const;
     bool writeParamsJson(const RunJob& job, QString* errorOut) const;
 
@@ -91,23 +88,11 @@ private:
     int currentJobTotalSteps_ = 0;
 
     QPlainTextEdit* log_ = nullptr;
-    QProgressBar* singleStepProgress_ = nullptr;
-    QProgressBar* batchStepProgress_ = nullptr;
+    QProgressBar* expStepProgress_ = nullptr;
+    QProgressBar* expProgress_ = nullptr;
 
-    // Single-run widgets
-    QDoubleSpinBox* singleU0_ = nullptr;
-    QDoubleSpinBox* singleCon0_ = nullptr;
-    QDoubleSpinBox* singleSig_ = nullptr;
-    QDoubleSpinBox* singleDt_ = nullptr;
-    QDoubleSpinBox* singleDx_ = nullptr;
-    QSpinBox* singleSteps_ = nullptr;
-    QSpinBox* singleMod_ = nullptr;
-    QSpinBox* singleSeed_ = nullptr;
-    QLineEdit* singleBaseOutDir_ = nullptr;
-    QLineEdit* singleRunName_ = nullptr;
-
-    // Batch-run widgets
-    struct BatchParamWidgets {
+    // Experiment widgets
+    struct SweepParamWidgets {
         QString key;
         QString label;
         bool isInt = false;
@@ -133,12 +118,11 @@ private:
         QLineEdit* listEdit = nullptr;      // comma-separated values
     };
 
-    QVector<BatchParamWidgets> batchParams_;
+    QVector<SweepParamWidgets> sweepParams_;
 
-    QLineEdit* batchBaseOutDir_ = nullptr;
-    QLineEdit* batchName_ = nullptr;
-    QLabel* batchPreview_ = nullptr;
-    QProgressBar* batchProgress_ = nullptr;
+    QLineEdit* expBaseOutDir_ = nullptr;
+    QLineEdit* expName_ = nullptr;
+    QLabel* expPreview_ = nullptr;
 
     // Results/visualization widgets
     QLineEdit* resultsDir_ = nullptr;
