@@ -228,7 +228,7 @@ MID Nano-0.4.1-linux-arm64.AppImage
 
 ### 4.4 关于（About）与 License
 
-- `About`：显示项目名称、版本号、作者与仓库链接（GitHub/Gitee）。
+- `About`：显示项目名称、版本号、作者、仓库链接（GitHub/Gitee），以及依赖信息（Qt/FFTW）与构建信息（Build type / Git commit / build time / 运行环境信息）。
 - `Upload License…`：选择一个 license 文件并保存到本机应用数据目录（仅本地保存，不会上传网络）。该文件用于后续功能（如授权校验、功能解锁等）的对接。
 
 > （截图占位：About 弹窗）

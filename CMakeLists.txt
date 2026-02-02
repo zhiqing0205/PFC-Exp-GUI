@@ -53,4 +53,27 @@ add_executable(pfc_exp_gui WIN32 MACOSX_BUNDLE
 )
 target_link_libraries(pfc_exp_gui PRIVATE Qt6::Widgets)
 set_target_properties(pfc_exp_gui PROPERTIES OUTPUT_NAME "MID Nano")
-target_compile_definitions(pfc_exp_gui PRIVATE MID_NANO_VERSION="${MID_NANO_VERSION}")
+
+string(TIMESTAMP MID_NANO_BUILD_TIME "%Y-%m-%d %H:%M:%S")
+set(MID_NANO_GIT_SHA "unknown")
+find_package(Git QUIET)
+if(GIT_FOUND)
+  execute_process(
+    COMMAND "${GIT_EXECUTABLE}" rev-parse --short=10 HEAD
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    OUTPUT_VARIABLE MID_NANO_GIT_SHA
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+endif()
+
+target_compile_definitions(pfc_exp_gui PRIVATE
+  MID_NANO_VERSION="${MID_NANO_VERSION}"
+  MID_NANO_BUILD_TIME="${MID_NANO_BUILD_TIME}"
+  MID_NANO_GIT_SHA="${MID_NANO_GIT_SHA}"
+)
+if(CMAKE_CONFIGURATION_TYPES)
+  target_compile_definitions(pfc_exp_gui PRIVATE MID_NANO_BUILD_TYPE="$<CONFIG>")
+else()
+  target_compile_definitions(pfc_exp_gui PRIVATE MID_NANO_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
+endif()

@@ -39,6 +39,7 @@
 #include <QStackedWidget>
 #include <QStandardPaths>
 #include <QStyle>
+#include <QSysInfo>
 #include <QTabBar>
 #include <QTabWidget>
 #include <QToolButton>
@@ -2172,7 +2173,7 @@ void MainWindow::showAboutDialog() {
     QDialog dlg(this);
     dlg.setWindowTitle("About " + appName);
     dlg.setModal(true);
-    dlg.resize(520, 360);
+    dlg.resize(620, 520);
 
     auto* layout = new QVBoxLayout(&dlg);
     layout->setSpacing(12);
@@ -2181,17 +2182,130 @@ void MainWindow::showAboutDialog() {
     title->setTextFormat(Qt::RichText);
     layout->addWidget(title);
 
-    auto* info = new QLabel;
-    info->setTextFormat(Qt::RichText);
-    info->setOpenExternalLinks(true);
-    info->setWordWrap(true);
-    info->setText(QString(
-                      "<b>Version</b>: %1<br/>"
-                      "<b>Author</b>: %2<br/>"
-                      "<b>GitHub</b>: <a href=\"%3\">%3</a><br/>"
-                      "<b>Gitee</b>: <a href=\"%4\">%4</a><br/>")
-                      .arg(version.toHtmlEscaped(), author.toHtmlEscaped(), githubUrl.toHtmlEscaped(), giteeUrl.toHtmlEscaped()));
-    layout->addWidget(info);
+    auto* scroll = new QScrollArea;
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setWidgetResizable(true);
+
+    auto* content = new QWidget;
+    auto* contentLayout = new QVBoxLayout(content);
+    contentLayout->setContentsMargins(0, 0, 0, 0);
+    contentLayout->setSpacing(10);
+
+    auto makeValueLabel = [](const QString& html) {
+        auto* l = new QLabel(html);
+        l->setTextFormat(Qt::RichText);
+        l->setOpenExternalLinks(true);
+        l->setWordWrap(true);
+        l->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::LinksAccessibleByMouse);
+        return l;
+    };
+
+    auto addRow = [](QFormLayout* form, const QString& key, QWidget* value) {
+        auto* k = new QLabel(key);
+        QFont f = k->font();
+        f.setBold(true);
+        k->setFont(f);
+        k->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        form->addRow(k, value);
+    };
+
+    // Project
+    {
+        auto* box = new QGroupBox("Project");
+        auto* form = new QFormLayout;
+        form->setLabelAlignment(Qt::AlignRight);
+        addRow(form, "Name", makeValueLabel(appName.toHtmlEscaped()));
+        addRow(form, "Version", makeValueLabel(version.toHtmlEscaped()));
+        addRow(form, "Author", makeValueLabel(author.toHtmlEscaped()));
+        box->setLayout(form);
+        contentLayout->addWidget(box);
+    }
+
+    // Links
+    {
+        auto* box = new QGroupBox("Links");
+        auto* form = new QFormLayout;
+        form->setLabelAlignment(Qt::AlignRight);
+        addRow(form, "GitHub", makeValueLabel(QString("<a href=\"%1\">%1</a>").arg(githubUrl.toHtmlEscaped())));
+        addRow(form, "Gitee", makeValueLabel(QString("<a href=\"%1\">%1</a>").arg(giteeUrl.toHtmlEscaped())));
+        box->setLayout(form);
+        contentLayout->addWidget(box);
+    }
+
+    // Dependencies
+    {
+        auto* box = new QGroupBox("Dependencies");
+        auto* form = new QFormLayout;
+        form->setLabelAlignment(Qt::AlignRight);
+        addRow(form, "Qt", makeValueLabel(QString("Qt %1 (Widgets)").arg(QString::fromUtf8(qVersion()).toHtmlEscaped())));
+        addRow(form, "FFTW", makeValueLabel("FFTW3 (used by <code>pfc-exp-cli</code>)"));
+        box->setLayout(form);
+        contentLayout->addWidget(box);
+    }
+
+    // Build info
+    {
+#ifdef MID_NANO_BUILD_TYPE
+        const QString buildType = QString::fromUtf8(MID_NANO_BUILD_TYPE);
+#else
+        const QString buildType = "unknown";
+#endif
+#ifdef MID_NANO_GIT_SHA
+        const QString gitSha = QString::fromUtf8(MID_NANO_GIT_SHA);
+#else
+        const QString gitSha = "unknown";
+#endif
+#ifdef MID_NANO_BUILD_TIME
+        const QString buildTime = QString::fromUtf8(MID_NANO_BUILD_TIME);
+#else
+        const QString buildTime = "unknown";
+#endif
+        const QString osPretty = QSysInfo::prettyProductName();
+        const QString arch = QSysInfo::currentCpuArchitecture();
+
+        auto* box = new QGroupBox("Build");
+        auto* form = new QFormLayout;
+        form->setLabelAlignment(Qt::AlignRight);
+        addRow(form, "Type", makeValueLabel(buildType.toHtmlEscaped()));
+        addRow(form, "Git", makeValueLabel(gitSha.toHtmlEscaped()));
+        addRow(form, "Time", makeValueLabel(buildTime.toHtmlEscaped()));
+        addRow(form, "Runtime OS", makeValueLabel((osPretty.isEmpty() ? QString("unknown") : osPretty).toHtmlEscaped()));
+        addRow(form, "Runtime Arch", makeValueLabel((arch.isEmpty() ? QString("unknown") : arch).toHtmlEscaped()));
+        box->setLayout(form);
+        contentLayout->addWidget(box);
+    }
+
+    // License (user-provided)
+    {
+        const QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+        QString status = "Not installed";
+        QString location;
+        if (!appDataDir.isEmpty()) {
+            QDir dir(appDataDir);
+            const QStringList files = dir.entryList(QStringList() << "license.*", QDir::Files);
+            if (!files.isEmpty()) {
+                status = QString("Installed (%1)").arg(files.first());
+                location = dir.filePath(files.first());
+                if (files.size() > 1) status += QString(" (+%1 more)").arg(files.size() - 1);
+            }
+        }
+
+        auto* box = new QGroupBox("License");
+        auto* form = new QFormLayout;
+        form->setLabelAlignment(Qt::AlignRight);
+        addRow(form, "Status", makeValueLabel(status.toHtmlEscaped()));
+        if (!location.isEmpty()) {
+            addRow(form, "Location", makeValueLabel(location.toHtmlEscaped()));
+        } else {
+            addRow(form, "Hint", makeValueLabel("Use <b>Upload License…</b> in the main window to select a license file."));
+        }
+        box->setLayout(form);
+        contentLayout->addWidget(box);
+    }
+
+    contentLayout->addStretch(1);
+    scroll->setWidget(content);
+    layout->addWidget(scroll, 1);
 
     auto* hint = new QLabel("Tip: If you have a license file, click “Upload License…” on the main window.");
     hint->setProperty("hint", true);
