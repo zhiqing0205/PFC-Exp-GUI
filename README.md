@@ -10,7 +10,8 @@
 ## 功能
 
 - 单次实验：配置 `u0`（密度/序参量均值）、`con0`（浓度）、`steps`（迭代步数）等参数并运行。
-- 批量实验：对 `u0 / con0 / steps` 设置区间与步长，按笛卡尔积组合后顺序运行多组实验。
+- 批量实验：每个参数可选择 Fixed / Range / List（固定/范围/列表），按笛卡尔积组合后顺序运行多组实验。
+- 可视化：查看输出目录中的 `*.txt`；对 `Phimax_*.txt` 等快照可渲染热图并导出 PNG。
 - 每次运行都会在输出目录写入 `params.json`（GUI 生成）与 `run_config.txt`（CLI 写入）。
 
 ## 构建（CMake）
@@ -61,7 +62,8 @@ cmake --build build --config Release
 运行 `MID Nano`（确保同目录下存在 `pfc-exp-cli`），在界面中填写参数与输出目录：
 
 - Single Run：单次运行
-- Batch Sweep：扫参批量运行（`u0 / con0 / steps`）
+- Batch Sweep：扫参批量运行（逐参数 Fixed / Range / List）
+- Visualizer：结果查看（Table / Plot）
 
 ### CLI
 
