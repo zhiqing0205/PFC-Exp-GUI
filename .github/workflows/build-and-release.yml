@@ -60,13 +60,42 @@ jobs:
           echo "Detected src_dir: ${src_dir}"
           echo "src_dir=${src_dir}" >> "$GITHUB_OUTPUT"
 
-      - name: Install Qt
-        id: qt
+      - name: Install Qt (attempt 1)
+        id: qt1
         if: runner.os != 'Linux'
+        continue-on-error: true
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
           cache: true
+
+      - name: Clean Qt cache (retry)
+        if: runner.os != 'Linux' && steps.qt1.outcome == 'failure'
+        shell: bash
+        run: |
+          rm -rf Qt || true
+          rm -rf "$HOME/.cache/aqt" "$HOME/Library/Caches/aqt" || true
+          rm -rf "$HOME/AppData/Local/aqt" "$HOME/AppData/Roaming/aqt" || true
+
+      - name: Install Qt (attempt 2)
+        id: qt2
+        if: runner.os != 'Linux' && steps.qt1.outcome == 'failure'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          cache: true
+
+      - name: Select Qt path
+        id: qt
+        if: runner.os != 'Linux'
+        shell: bash
+        run: |
+          qt_path="${{ steps.qt1.outputs.qt-path || steps.qt2.outputs.qt-path }}"
+          if [[ -z "${qt_path}" ]]; then
+            echo "Qt installation failed." >&2
+            exit 1
+          fi
+          echo "qt-path=${qt_path}" >> "$GITHUB_OUTPUT"
 
       - name: Setup MSVC
         if: runner.os == 'Windows'
