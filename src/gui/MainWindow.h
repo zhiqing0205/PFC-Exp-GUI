@@ -8,6 +8,7 @@
 class QCheckBox;
 class QDoubleSpinBox;
 class QComboBox;
+class QDialog;
 class QGraphicsPixmapItem;
 class QGraphicsScene;
 class QGraphicsView;
@@ -20,6 +21,7 @@ class QSpinBox;
 class QStackedWidget;
 class QTabWidget;
 class QTableWidget;
+class QToolButton;
 
 struct RunParams {
     double u0 = 0.05;
@@ -90,6 +92,8 @@ private:
     int currentJobTotalSteps_ = 0;
 
     QPlainTextEdit* log_ = nullptr;
+    QDialog* logDialog_ = nullptr;
+    QToolButton* logStatusButton_ = nullptr;
     QProgressBar* expStepProgress_ = nullptr;
     QProgressBar* expProgress_ = nullptr;
 

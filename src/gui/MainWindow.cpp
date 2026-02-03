@@ -38,6 +38,7 @@
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QStandardPaths>
+#include <QStatusBar>
 #include <QStyle>
 #include <QSysInfo>
 #include <QTabBar>
@@ -249,28 +250,42 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         log_->setFont(f);
     }
 
-    auto* logBox = new QGroupBox("Log");
-    auto* logLayout = new QVBoxLayout;
-    logLayout->addWidget(log_);
-    logLayout->setContentsMargins(0, 0, 0, 0);
-    logBox->setLayout(logLayout);
+    logDialog_ = new QDialog(this);
+    logDialog_->setWindowTitle("Log");
+    logDialog_->resize(980, 620);
+    {
+        auto* dlgLayout = new QVBoxLayout;
+        dlgLayout->setContentsMargins(12, 12, 12, 12);
+        dlgLayout->setSpacing(10);
+        dlgLayout->addWidget(log_);
+        logDialog_->setLayout(dlgLayout);
+    }
 
     auto* central = new QWidget;
     auto* centralLayout = new QVBoxLayout;
     centralLayout->setContentsMargins(14, 14, 14, 14);
-    centralLayout->setSpacing(12);
-    auto* splitter = new QSplitter(Qt::Vertical);
-    splitter->setHandleWidth(10);
-    splitter->setChildrenCollapsible(false);
-    splitter->addWidget(tabs);
-    splitter->addWidget(logBox);
-    splitter->setStretchFactor(0, 3);
-    splitter->setStretchFactor(1, 1);
-    splitter->setSizes(QList<int>() << 560 << 220);
-
-    centralLayout->addWidget(splitter, 1);
+    centralLayout->setSpacing(0);
+    centralLayout->addWidget(tabs, 1);
     central->setLayout(centralLayout);
     setCentralWidget(central);
+
+    auto* sb = new QStatusBar;
+    sb->setSizeGripEnabled(true);
+    setStatusBar(sb);
+
+    logStatusButton_ = new QToolButton;
+    logStatusButton_->setAutoRaise(true);
+    logStatusButton_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    logStatusButton_->setIcon(style()->standardIcon(QStyle::SP_FileDialogDetailedView));
+    logStatusButton_->setText("Ready (click to open log)");
+    logStatusButton_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    sb->addWidget(logStatusButton_, 1);
+    connect(logStatusButton_, &QToolButton::clicked, this, [this]() {
+        if (!logDialog_) return;
+        logDialog_->show();
+        logDialog_->raise();
+        logDialog_->activateWindow();
+    });
 
     connect(aboutBtn, &QPushButton::clicked, this, &MainWindow::showAboutDialog);
     connect(uploadLicenseBtn, &QPushButton::clicked, this, &MainWindow::uploadLicense);
@@ -1915,7 +1930,19 @@ QVector<RunJob> MainWindow::buildExperimentJobs(const QString& baseDir, const QS
 }
 
 void MainWindow::appendLog(const QString& text) {
-    log_->appendPlainText(text);
+    if (log_) log_->appendPlainText(text);
+
+    if (logStatusButton_) {
+        QString single = text;
+        single.replace('\n', ' ');
+        single = single.simplified();
+        constexpr int kMaxChars = 180;
+        if (single.size() > kMaxChars) {
+            single = single.left(kMaxChars - 3) + "...";
+        }
+        logStatusButton_->setText(single);
+        logStatusButton_->setToolTip(text);
+    }
 }
 
 void MainWindow::setRunningUi(bool running) {
