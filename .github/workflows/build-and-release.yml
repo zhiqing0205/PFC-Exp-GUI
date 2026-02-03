@@ -320,13 +320,13 @@ jobs:
               cd src
 
               git clone --depth 1 --recurse-submodules https://github.com/linuxdeploy/linuxdeploy.git
-              cmake -S linuxdeploy -B linuxdeploy/build -G Ninja -DCMAKE_BUILD_TYPE=Release
-              cmake --build linuxdeploy/build
+              cmake -S linuxdeploy -B linuxdeploy/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+              cmake --build linuxdeploy/build --target linuxdeploy
               install -m 0755 \"\$(find linuxdeploy/build -type f -name linuxdeploy -perm -111 | head -n 1)\" /work/tools/linuxdeploy
 
               git clone --depth 1 --recurse-submodules https://github.com/linuxdeploy/linuxdeploy-plugin-qt.git
-              cmake -S linuxdeploy-plugin-qt -B linuxdeploy-plugin-qt/build -G Ninja -DCMAKE_BUILD_TYPE=Release
-              cmake --build linuxdeploy-plugin-qt/build
+              cmake -S linuxdeploy-plugin-qt -B linuxdeploy-plugin-qt/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+              cmake --build linuxdeploy-plugin-qt/build --target linuxdeploy-plugin-qt
               install -m 0755 \"\$(find linuxdeploy-plugin-qt/build -type f -name linuxdeploy-plugin-qt -perm -111 | head -n 1)\" /work/tools/linuxdeploy-plugin-qt
 
               cd /work/tools
@@ -337,8 +337,8 @@ jobs:
                 echo \"appimagetool AppImage not available for ${{ matrix.appimage_arch }}, building from source...\"
                 cd src
                 git clone --depth 1 --recurse-submodules https://github.com/AppImage/appimagetool.git
-                cmake -S appimagetool -B appimagetool/build -G Ninja -DCMAKE_BUILD_TYPE=Release
-                cmake --build appimagetool/build
+                cmake -S appimagetool -B appimagetool/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+                cmake --build appimagetool/build --target appimagetool
                 install -m 0755 \"\$(find appimagetool/build -type f -name appimagetool -perm -111 | head -n 1)\" /work/tools/appimagetool
               fi
 
