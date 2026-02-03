@@ -2235,6 +2235,35 @@ void MainWindow::showAboutDialog() {
         form->addRow(k, value);
     };
 
+    // License (user-provided)
+    {
+        const QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+        bool installed = false;
+        QString fileName;
+        QString location;
+        if (!appDataDir.isEmpty()) {
+            QDir dir(appDataDir);
+            const QStringList files = dir.entryList(QStringList() << "license.*", QDir::Files);
+            if (!files.isEmpty()) {
+                installed = true;
+                fileName = files.first();
+                location = dir.filePath(files.first());
+            }
+        }
+
+        const QString statusHtml = installed ? QString("<span style='color:#16A34A; font-weight:700;'>Installed</span> <span style='color:#6B7280;'>(%1)</span>")
+                                                   .arg(fileName.toHtmlEscaped())
+                                             : QString("<span style='color:#DC2626; font-weight:700;'>Not installed</span>");
+
+        auto* box = new QGroupBox("License");
+        auto* form = new QFormLayout;
+        form->setLabelAlignment(Qt::AlignRight);
+        addRow(form, "Status", makeValueLabel(statusHtml));
+        addRow(form, "Location", makeValueLabel(location.isEmpty() ? QString("<span style='color:#DC2626;'>—</span>") : QString("<code>%1</code>").arg(location.toHtmlEscaped())));
+        box->setLayout(form);
+        contentLayout->addWidget(box);
+    }
+
     // Project
     {
         auto* box = new QGroupBox("Project");
@@ -2269,74 +2298,9 @@ void MainWindow::showAboutDialog() {
         contentLayout->addWidget(box);
     }
 
-    // Build info
-    {
-#ifdef MID_NANO_BUILD_TYPE
-        const QString buildType = QString::fromUtf8(MID_NANO_BUILD_TYPE);
-#else
-        const QString buildType = "unknown";
-#endif
-#ifdef MID_NANO_GIT_SHA
-        const QString gitSha = QString::fromUtf8(MID_NANO_GIT_SHA);
-#else
-        const QString gitSha = "unknown";
-#endif
-#ifdef MID_NANO_BUILD_TIME
-        const QString buildTime = QString::fromUtf8(MID_NANO_BUILD_TIME);
-#else
-        const QString buildTime = "unknown";
-#endif
-        const QString osPretty = QSysInfo::prettyProductName();
-        const QString arch = QSysInfo::currentCpuArchitecture();
-
-        auto* box = new QGroupBox("Build");
-        auto* form = new QFormLayout;
-        form->setLabelAlignment(Qt::AlignRight);
-        addRow(form, "Type", makeValueLabel(buildType.toHtmlEscaped()));
-        addRow(form, "Git", makeValueLabel(gitSha.toHtmlEscaped()));
-        addRow(form, "Time", makeValueLabel(buildTime.toHtmlEscaped()));
-        addRow(form, "Runtime OS", makeValueLabel((osPretty.isEmpty() ? QString("unknown") : osPretty).toHtmlEscaped()));
-        addRow(form, "Runtime Arch", makeValueLabel((arch.isEmpty() ? QString("unknown") : arch).toHtmlEscaped()));
-        box->setLayout(form);
-        contentLayout->addWidget(box);
-    }
-
-    // License (user-provided)
-    {
-        const QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-        QString status = "Not installed";
-        QString location;
-        if (!appDataDir.isEmpty()) {
-            QDir dir(appDataDir);
-            const QStringList files = dir.entryList(QStringList() << "license.*", QDir::Files);
-            if (!files.isEmpty()) {
-                status = QString("Installed (%1)").arg(files.first());
-                location = dir.filePath(files.first());
-                if (files.size() > 1) status += QString(" (+%1 more)").arg(files.size() - 1);
-            }
-        }
-
-        auto* box = new QGroupBox("License");
-        auto* form = new QFormLayout;
-        form->setLabelAlignment(Qt::AlignRight);
-        addRow(form, "Status", makeValueLabel(status.toHtmlEscaped()));
-        if (!location.isEmpty()) {
-            addRow(form, "Location", makeValueLabel(location.toHtmlEscaped()));
-        } else {
-            addRow(form, "Hint", makeValueLabel("Use <b>Upload License…</b> in the main window to select a license file."));
-        }
-        box->setLayout(form);
-        contentLayout->addWidget(box);
-    }
-
     contentLayout->addStretch(1);
     scroll->setWidget(content);
     layout->addWidget(scroll, 1);
-
-    auto* hint = new QLabel("Tip: If you have a license file, click “Upload License…” on the main window.");
-    hint->setProperty("hint", true);
-    hint->setWordWrap(true);
-    layout->addWidget(hint);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok);
     connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
