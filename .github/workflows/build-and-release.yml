@@ -296,6 +296,7 @@ jobs:
               apt-get install -y \
                 cmake ninja-build g++ git \
                 pkg-config \
+                ca-certificates wget \
                 qt6-base-dev qt6-base-dev-tools \
                 libgl1-mesa-dev mesa-common-dev libglu1-mesa-dev \
                 libx11-dev libxext-dev libxkbcommon-dev \
@@ -321,6 +322,17 @@ jobs:
 
               git clone --depth 1 --recurse-submodules https://github.com/linuxdeploy/linuxdeploy.git
               cmake -S linuxdeploy -B linuxdeploy/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+
+              # Upstream generate-excludelist.sh assumes excludelist.h already exists (sha256sum),
+              # so on fresh clones the header may be missing and the build fails.
+              mkdir -p linuxdeploy/build/src/core
+              printf '%s\n' \
+                '#include <string>' \
+                '#include <vector>' \
+                'static const std::vector<std::string> generatedExcludelist = {};' \
+                > linuxdeploy/build/src/core/excludelist.h
+              (cd linuxdeploy/build/src/core && bash ../../../src/core/generate-excludelist.sh) || true
+
               cmake --build linuxdeploy/build --target linuxdeploy
               install -m 0755 \"\$(find linuxdeploy/build -type f -name linuxdeploy -perm -111 | head -n 1)\" /work/tools/linuxdeploy
 
