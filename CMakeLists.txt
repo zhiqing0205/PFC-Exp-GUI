@@ -54,6 +54,13 @@ add_executable(pfc_exp_gui WIN32 MACOSX_BUNDLE
 target_link_libraries(pfc_exp_gui PRIVATE Qt6::Widgets)
 set_target_properties(pfc_exp_gui PROPERTIES OUTPUT_NAME "MID Nano")
 
+if(WIN32)
+  add_executable(mid_nano_launcher WIN32
+    src/launcher/windows_launcher.cpp
+  )
+  set_target_properties(mid_nano_launcher PROPERTIES OUTPUT_NAME "mid-nano-launcher")
+endif()
+
 string(TIMESTAMP MID_NANO_BUILD_TIME "%Y-%m-%d %H:%M:%S")
 set(MID_NANO_GIT_SHA "unknown")
 find_package(Git QUIET)

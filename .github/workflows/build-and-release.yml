@@ -228,11 +228,13 @@ jobs:
           $version = $env:GITHUB_REF_NAME
 
           New-Item -ItemType Directory -Force -Path stage | Out-Null
+          New-Item -ItemType Directory -Force -Path stage/app | Out-Null
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item "build/bin/MID Nano.exe" "stage/" -Force
-          Copy-Item "build/bin/pfc-exp-cli.exe" "stage/" -Force
+          Copy-Item "build/bin/MID Nano.exe" "stage/app/" -Force
+          Copy-Item "build/bin/pfc-exp-cli.exe" "stage/app/" -Force
+          Copy-Item "build/bin/mid-nano-launcher.exe" "stage/MID Nano.exe" -Force
 
-          windeployqt --release --compiler-runtime "stage/MID Nano.exe"
+          windeployqt --release --compiler-runtime "stage/app/MID Nano.exe"
 
           # Bundle vcpkg runtime DLLs (needed e.g. for FFTW3).
           $triplet = "x64-windows"
@@ -248,7 +250,7 @@ jobs:
           foreach ($bin in $candidateBins) {
             if (Test-Path $bin) {
               Write-Host "Copying vcpkg runtime DLLs from: $bin"
-              Copy-Item (Join-Path $bin "*.dll") "stage/" -Force
+              Copy-Item (Join-Path $bin "*.dll") "stage/app/" -Force
               $copiedAny = $true
             }
           }
@@ -256,7 +258,7 @@ jobs:
             Write-Warning "No vcpkg runtime bin directory found; pfc-exp-cli.exe may fail to start if it depends on DLLs."
           }
 
-          $fftw = Get-ChildItem "stage" -Filter "*fftw*.dll" -ErrorAction SilentlyContinue
+          $fftw = Get-ChildItem "stage/app" -Filter "*fftw*.dll" -ErrorAction SilentlyContinue
           if (-not $fftw) {
             Write-Warning "No FFTW DLL copied to dist. If pfc-exp-cli.exe fails with 0xC0000135, check vcpkg bin path."
           } else {

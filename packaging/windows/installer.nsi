@@ -39,11 +39,13 @@ Section "Install"
 
   CreateDirectory "$SMPROGRAMS\\${APP_NAME}"
   CreateShortcut "$SMPROGRAMS\\${APP_NAME}\\${APP_NAME}.lnk" "$INSTDIR\\${APP_NAME}.exe"
+  CreateShortcut "$DESKTOP\\${APP_NAME}.lnk" "$INSTDIR\\${APP_NAME}.exe"
   CreateShortcut "$SMPROGRAMS\\${APP_NAME}\\Uninstall.lnk" "$INSTDIR\\Uninstall.exe"
 SectionEnd
 
 Section "Uninstall"
   Delete "$SMPROGRAMS\\${APP_NAME}\\${APP_NAME}.lnk"
+  Delete "$DESKTOP\\${APP_NAME}.lnk"
   Delete "$SMPROGRAMS\\${APP_NAME}\\Uninstall.lnk"
   RMDir "$SMPROGRAMS\\${APP_NAME}"
 
