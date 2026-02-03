@@ -17,6 +17,7 @@ class QLineEdit;
 class QListWidget;
 class QPlainTextEdit;
 class QProgressBar;
+class QResizeEvent;
 class QSpinBox;
 class QStackedWidget;
 class QTabWidget;
@@ -48,6 +49,9 @@ class MainWindow final : public QMainWindow {
 public:
     explicit MainWindow(QWidget* parent = nullptr);
 
+protected:
+    void resizeEvent(QResizeEvent* event) override;
+
 private slots:
     void startExperiment();
     void stopRun();
@@ -74,6 +78,7 @@ private:
 
     void launchJob(const RunJob& job);
     void appendLog(const QString& text);
+    void updateStatusLogText();
     void setRunningUi(bool running);
 
     void setResultsDir(const QString& dirPath);
@@ -94,6 +99,8 @@ private:
     QPlainTextEdit* log_ = nullptr;
     QDialog* logDialog_ = nullptr;
     QToolButton* logStatusButton_ = nullptr;
+    QString statusLogText_;
+    QString statusLogTooltip_;
     QProgressBar* expStepProgress_ = nullptr;
     QProgressBar* expProgress_ = nullptr;
 

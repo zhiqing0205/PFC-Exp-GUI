@@ -50,6 +50,7 @@
 #include <QTableWidget>
 #include <QHeaderView>
 #include <QWheelEvent>
+#include <QResizeEvent>
 
 #include <algorithm>
 #include <array>
@@ -165,7 +166,7 @@ protected:
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("MID Nano");
-    resize(1100, 780);
+    resize(1100, 840);
 
     auto* uploadLicenseBtn = new QPushButton("Upload License…");
     uploadLicenseBtn->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
@@ -277,8 +278,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     logStatusButton_->setAutoRaise(true);
     logStatusButton_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     logStatusButton_->setIcon(style()->standardIcon(QStyle::SP_FileDialogDetailedView));
-    logStatusButton_->setText("Ready (click to open log)");
-    logStatusButton_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    logStatusButton_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    logStatusButton_->setMinimumWidth(0);
+    statusLogText_ = "Ready (click to open log)";
+    statusLogTooltip_ = statusLogText_;
+    updateStatusLogText();
     sb->addWidget(logStatusButton_, 1);
     connect(logStatusButton_, &QToolButton::clicked, this, [this]() {
         if (!logDialog_) return;
@@ -1932,21 +1936,34 @@ QVector<RunJob> MainWindow::buildExperimentJobs(const QString& baseDir, const QS
 void MainWindow::appendLog(const QString& text) {
     if (log_) log_->appendPlainText(text);
 
-    if (logStatusButton_) {
-        QString single = text;
-        single.replace('\n', ' ');
-        single = single.simplified();
-        constexpr int kMaxChars = 180;
-        if (single.size() > kMaxChars) {
-            single = single.left(kMaxChars - 3) + "...";
-        }
-        logStatusButton_->setText(single);
-        logStatusButton_->setToolTip(text);
-    }
+    QString single = text;
+    single.replace('\n', ' ');
+    single = single.simplified();
+    statusLogText_ = single;
+    statusLogTooltip_ = text;
+    updateStatusLogText();
+}
+
+void MainWindow::updateStatusLogText() {
+    if (!logStatusButton_) return;
+
+    const QString full = statusLogText_.isEmpty() ? QString("Ready") : statusLogText_;
+    int available = logStatusButton_->width();
+    if (available <= 0 && statusBar()) available = statusBar()->width();
+    available = std::max(60, available - 40);
+
+    const QFontMetrics fm(logStatusButton_->font());
+    logStatusButton_->setText(fm.elidedText(full, Qt::ElideRight, available));
+    logStatusButton_->setToolTip(statusLogTooltip_.isEmpty() ? full : statusLogTooltip_);
 }
 
 void MainWindow::setRunningUi(bool running) {
     (void)running;
+}
+
+void MainWindow::resizeEvent(QResizeEvent* event) {
+    QMainWindow::resizeEvent(event);
+    updateStatusLogText();
 }
 
 void MainWindow::launchJob(const RunJob& job) {
