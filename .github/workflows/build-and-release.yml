@@ -300,6 +300,7 @@ jobs:
                 libgl1-mesa-dev mesa-common-dev libglu1-mesa-dev \
                 libx11-dev libxext-dev libxkbcommon-dev \
                 libfftw3-dev \
+                libpng-dev \
                 libyaml-cpp-dev libcurl4-openssl-dev libssl-dev libarchive-dev libgpgme-dev libmagic-dev \
                 curl patchelf squashfs-tools \
                 desktop-file-utils
