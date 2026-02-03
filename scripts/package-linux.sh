@@ -114,6 +114,10 @@ if ! command -v linuxdeploy >/dev/null 2>&1; then
   echo "linuxdeploy is required in PATH for AppImage packaging." >&2
   exit 1
 fi
+if ! command -v appimagetool >/dev/null 2>&1; then
+  echo "appimagetool is required in PATH for AppImage packaging." >&2
+  exit 1
+fi
 
 appdir="${tmp}/AppDir"
 mkdir -p "${appdir}/usr/bin" \
@@ -141,6 +145,7 @@ mkdir -p "${appimage_work}"
 pushd "${appimage_work}" >/dev/null
 export APPIMAGE_EXTRACT_AND_RUN=1
 export VERSION="${DEB_VERSION}"
+export ARCH="${APPIMAGE_ARCH}"
 
 linuxdeploy \
   --appdir "${appdir}" \
@@ -148,14 +153,13 @@ linuxdeploy \
   --executable "${appdir}/usr/bin/pfc-exp-cli" \
   --desktop-file "${appdir}/usr/share/applications/${APP_ID}.desktop" \
   --icon-file "${appdir}/usr/share/icons/hicolor/scalable/apps/${APP_ID}.svg" \
-  --plugin qt \
-  --output appimage
+  --plugin qt
 
-produced="$(ls -1 ./*.AppImage 2>/dev/null | head -n 1 || true)"
-if [[ -z "${produced}" ]]; then
-  echo "Failed to produce AppImage." >&2
-  ls -la
-  exit 1
+if [[ ! -f "${appdir}/${APP_ID}.desktop" ]]; then
+  cp "${appdir}/usr/share/applications/${APP_ID}.desktop" "${appdir}/${APP_ID}.desktop" || true
+fi
+if [[ ! -e "${appdir}/.DirIcon" ]]; then
+  ln -sf "usr/share/icons/hicolor/scalable/apps/${APP_ID}.svg" "${appdir}/.DirIcon" || true
 fi
 
 case "${APPIMAGE_ARCH}" in
@@ -165,6 +169,6 @@ case "${APPIMAGE_ARCH}" in
 esac
 
 appimage_out="${OUT_DIR}/${APP_NAME}-${VERSION}-${appimage_suffix}"
-mv "${produced}" "${appimage_out}"
+appimagetool "${appdir}" "${appimage_out}"
 chmod +x "${appimage_out}"
 popd >/dev/null
