@@ -166,24 +166,25 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("MID Nano");
     resize(1100, 780);
 
-    auto* topBar = new QWidget;
-    auto* topBarLayout = new QHBoxLayout;
-    topBarLayout->setContentsMargins(0, 0, 0, 0);
-    topBarLayout->setSpacing(10);
-    topBarLayout->addStretch(1);
     auto* uploadLicenseBtn = new QPushButton("Upload License…");
     uploadLicenseBtn->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
     auto* aboutBtn = new QPushButton("About");
     aboutBtn->setIcon(style()->standardIcon(QStyle::SP_MessageBoxInformation));
-    topBarLayout->addWidget(uploadLicenseBtn);
-    topBarLayout->addWidget(aboutBtn);
-    topBar->setLayout(topBarLayout);
 
     auto* tabs = new QTabWidget;
     tabs->setDocumentMode(true);
     tabs->setUsesScrollButtons(true);
     tabs->tabBar()->setDrawBase(false);
     tabs->tabBar()->setExpanding(false);
+
+    auto* tabActions = new QWidget;
+    auto* tabActionsLayout = new QHBoxLayout;
+    tabActionsLayout->setContentsMargins(0, 0, 0, 0);
+    tabActionsLayout->setSpacing(10);
+    tabActionsLayout->addWidget(uploadLicenseBtn);
+    tabActionsLayout->addWidget(aboutBtn);
+    tabActions->setLayout(tabActionsLayout);
+    tabs->setCornerWidget(tabActions, Qt::TopRightCorner);
 
     auto* expTab = new QWidget;
     auto* resultsTab = new QWidget;
@@ -267,7 +268,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     splitter->setStretchFactor(1, 1);
     splitter->setSizes(QList<int>() << 560 << 220);
 
-    centralLayout->addWidget(topBar, 0);
     centralLayout->addWidget(splitter, 1);
     central->setLayout(centralLayout);
     setCentralWidget(central);
@@ -279,14 +279,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* expLayout = new QVBoxLayout;
     expLayout->setSpacing(10);
     expTab->setLayout(expLayout);
-
-    auto* expHint = new QLabel(
-        "Experiment: choose Fixed / Range / List for each parameter.\n"
-        "• If all parameters are Fixed, it behaves like a single run.\n"
-        "• Range: Start/End/Step -> preview as comma-separated values\n"
-        "• List: comma-separated values, e.g. 0.05,0.10,0.15");
-    expHint->setProperty("hint", true);
-    expHint->setWordWrap(true);
 
     auto header = [](const QString& text) {
         auto* l = new QLabel(text);
@@ -547,7 +539,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     expButtonsLayout->addWidget(expOpenOut);
     expButtons->setLayout(expButtonsLayout);
 
-    expLayout->addWidget(expHint);
     expLayout->addWidget(expParamsBox);
     expLayout->addWidget(expPreview_);
     expLayout->addWidget(expOutBox);
@@ -560,15 +551,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* resultsLayout = new QVBoxLayout;
     resultsLayout->setSpacing(12);
     resultsTab->setLayout(resultsLayout);
-
-    auto* resultsHint = new QLabel(
-        "Select an output run directory to inspect numeric data in *.txt files.\n"
-        "Tips:\n"
-        "• Phimax_*.txt (and related snapshots): use Plot to render a 2D heatmap (Ctrl+wheel to zoom)\n"
-        "• Other *.txt: use Table to inspect raw columns");
-    resultsHint->setProperty("hint", true);
-    resultsHint->setWordWrap(true);
-    resultsLayout->addWidget(resultsHint);
 
     auto* resultsDirBox = new QGroupBox("Run directory");
     auto* resultsDirRow = new QHBoxLayout;
