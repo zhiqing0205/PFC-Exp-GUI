@@ -25,7 +25,7 @@ jobs:
             appimage_arch: x86_64
             linuxdeploy_arch: x86_64
           - id: linux-arm64
-            os: ubuntu-24.04-arm64
+            os: ubuntu-22.04-arm64
             deb_arch: arm64
             appimage_arch: aarch64
             linuxdeploy_arch: aarch64
