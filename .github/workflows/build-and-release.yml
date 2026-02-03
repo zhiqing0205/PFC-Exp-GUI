@@ -83,9 +83,26 @@ jobs:
         if: runner.os != 'Linux'
         shell: bash
         run: |
-          qt_path="${{ steps.qt1.outputs.qt-path || steps.qt2.outputs.qt-path }}"
+          qt_path="${QT_ROOT_DIR:-}"
+          if [[ -z "${qt_path}" ]]; then
+            qt_path="${{ steps.qt1.outputs['qt-path'] }}"
+          fi
+          if [[ -z "${qt_path}" ]]; then
+            qt_path="${{ steps.qt2.outputs['qt-path'] }}"
+          fi
+          if [[ -z "${qt_path}" ]]; then
+            # last resort: attempt to locate Qt under the default install directory
+            qt_dir="$(pwd)/Qt/${{ env.QT_VERSION }}"
+            if [[ -d "${qt_dir}" ]]; then
+              qt_path="$(find "${qt_dir}" -maxdepth 2 -type d -name bin -print -quit | xargs -r dirname || true)"
+            fi
+          fi
           if [[ -z "${qt_path}" ]]; then
             echo "Qt installation failed." >&2
+            exit 1
+          fi
+          if [[ ! -d "${qt_path}" ]]; then
+            echo "Qt path does not exist: ${qt_path}" >&2
             exit 1
           fi
           echo "qt-path=${qt_path}" >> "$GITHUB_OUTPUT"
