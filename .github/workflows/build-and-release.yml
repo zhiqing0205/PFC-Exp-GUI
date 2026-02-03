@@ -317,6 +317,9 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $version = $env:GITHUB_REF_NAME
+          $qtPath = "${{ steps.qt.outputs.qt-path }}"
+          if (-not $qtPath) { throw "Qt path not found (steps.qt.outputs.qt-path is empty)." }
+          $qtBin = Join-Path $qtPath "bin"
 
           New-Item -ItemType Directory -Force -Path stage | Out-Null
           New-Item -ItemType Directory -Force -Path stage/app | Out-Null
@@ -325,7 +328,38 @@ jobs:
           Copy-Item "build/bin/pfc-exp-cli.exe" "stage/app/" -Force
           Copy-Item "build/bin/mid-nano-launcher.exe" "stage/MID Nano.exe" -Force
 
-          windeployqt --release --compiler-runtime "stage/app/MID Nano.exe"
+          if ("${{ matrix.id }}" -eq "win-arm64") {
+            Write-Host "win-arm64: skipping windeployqt (arm64 Qt tools cannot run on x64 runner). Using manual Qt deployment."
+
+            if (-not (Test-Path $qtBin)) { throw "Qt bin directory not found: $qtBin" }
+
+            Copy-Item (Join-Path $qtBin "*.dll") "stage/app/" -Force
+            $plugins = Join-Path $qtPath "plugins"
+            if (-not (Test-Path $plugins)) { throw "Qt plugins directory not found: $plugins" }
+            Copy-Item $plugins "stage/app/plugins" -Recurse -Force
+
+            # Help Qt locate its plugins relative to the executable.
+            Set-Content -Path "stage/app/qt.conf" -Value "[Paths]`nPlugins=plugins`n" -Encoding ASCII
+
+            # Bundle MSVC runtime for arm64 if available.
+            if ($env:VCToolsRedistDir) {
+              $crt = Join-Path $env:VCToolsRedistDir "arm64\\Microsoft.VC*.*\\*.dll"
+              $crtAlt = Join-Path $env:VCToolsRedistDir "arm64\\Microsoft.VC*\\*.dll"
+              $found = Get-ChildItem $crt -ErrorAction SilentlyContinue
+              if (-not $found) { $found = Get-ChildItem $crtAlt -ErrorAction SilentlyContinue }
+              if ($found) {
+                $found | ForEach-Object { Copy-Item $_.FullName "stage/app/" -Force }
+              } else {
+                Write-Warning "MSVC arm64 CRT DLLs not found under VCToolsRedistDir=$($env:VCToolsRedistDir)."
+              }
+            } else {
+              Write-Warning "VCToolsRedistDir not set; MSVC runtime DLLs may be missing for win-arm64."
+            }
+          } else {
+            $windeployqt = Join-Path $qtBin "windeployqt.exe"
+            if (-not (Test-Path $windeployqt)) { throw "windeployqt.exe not found at: $windeployqt" }
+            & $windeployqt --release --compiler-runtime "stage/app/MID Nano.exe"
+          }
 
           # Bundle vcpkg runtime DLLs (needed e.g. for FFTW3).
           $triplet = "${{ matrix.vcpkg_triplet }}"
