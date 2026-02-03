@@ -56,7 +56,7 @@
 - [ ] 产物命名规范化：建议去掉空格或同时提供无空格别名（更利于脚本下载）
 - [x] Windows 提供安装包（`win-x64.exe`）与便携包（`win-x64.zip`）
 - [x] macOS 提供 DMG 与 ZIP，并区分 `arm64/x64` 架构产物
-- [x] Linux 提供 DEB 与 AppImage，并区分 `amd64/arm64` 架构产物
+- [x] Linux 提供 DEB 与 AppImage（当前发布版仅提供 x86_64/amd64）
 - [ ] macOS 完善签名/公证（如需更广泛分发）
 
 ### 质量保障

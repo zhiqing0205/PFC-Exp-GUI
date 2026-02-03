@@ -241,9 +241,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     {
         QFont f = QFontDatabase::systemFont(QFontDatabase::FixedFont);
         if (f.pointSizeF() > 0) {
-            f.setPointSizeF(std::max(9.0, f.pointSizeF()));
+            f.setPointSizeF(std::max(10.0, f.pointSizeF()));
         } else {
-            f.setPointSize(10);
+            f.setPointSize(11);
         }
         log_->setFont(f);
     }

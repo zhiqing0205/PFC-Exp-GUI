@@ -82,7 +82,7 @@ MID Nano 的目标是把“改参数 → 跑一次 → 看结果”的流程做�
 
 - Windows：Windows 10/11 64 位（主要使用目标）。
 - macOS：支持运行（用于演示/测试）；首次运行可能需要处理隔离属性（见 FAQ）。
-- Linux：支持运行（用于演示/测试）。
+- Linux：支持运行（用于演示/测试）；当前发布版仅提供 x86_64 产物，arm64 暂不提供。
 
 ### 2.2 硬件建议
 
@@ -117,8 +117,6 @@ MID Nano-0.4.1-mac-x64.dmg
 MID Nano-0.4.1-mac-x64.zip
 MID Nano-0.4.1-linux-amd64.deb
 MID Nano-0.4.1-linux-x86_64.AppImage
-MID Nano-0.4.1-linux-arm64.deb
-MID Nano-0.4.1-linux-arm64.AppImage
 ```
 
 > （截图占位：下载产物列表）
@@ -177,12 +175,12 @@ MID Nano-0.4.1-linux-arm64.AppImage
 1) DEB（`*.deb`）
 
 - Debian/Ubuntu：
-  - `sudo apt-get install -y "./MID Nano-0.4.1-linux-amd64.deb"`（按需替换为 arm64 版本）
+  - `sudo apt-get install -y "./MID Nano-0.4.1-linux-amd64.deb"`
 
 2) AppImage（`*.AppImage`）
 
 - `chmod +x "MID Nano-*.AppImage"`
-- `./"MID Nano-0.4.1-linux-x86_64.AppImage"`（按需替换为 arm64 版本）
+- `./"MID Nano-0.4.1-linux-x86_64.AppImage"`
 
 > （截图占位：Linux 终端运行示例）
 >

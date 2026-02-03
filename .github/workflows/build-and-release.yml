@@ -24,13 +24,6 @@ jobs:
             deb_arch: amd64
             appimage_arch: x86_64
             linuxdeploy_arch: x86_64
-          - id: linux-arm64
-            os: ubuntu-latest
-            deb_arch: arm64
-            appimage_arch: aarch64
-            linuxdeploy_arch: aarch64
-            docker_platform: linux/arm64
-            docker_image: ubuntu:22.04
           - id: mac-arm64
             os: macos-14
             osx_arch: arm64
@@ -130,11 +123,6 @@ jobs:
             curl patchelf squashfs-tools \
             desktop-file-utils
 
-      - name: Setup QEMU (Linux arm64 via Docker)
-        if: runner.os == 'Linux' && matrix.docker_platform
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
 
       - name: Install FFTW (macOS)
         if: runner.os == 'macOS'
@@ -309,94 +297,6 @@ jobs:
             --appimage-arch "${{ matrix.appimage_arch }}" \
             --build-dir build \
             --out-dir dist
-
-      - name: Build + Package (Linux arm64 via Docker)
-        if: runner.os == 'Linux' && matrix.docker_platform
-        shell: bash
-        run: |
-          set -eux
-          mkdir -p dist tools
-
-          docker run --rm --platform "${{ matrix.docker_platform }}" \
-            -v "${GITHUB_WORKSPACE}:/work" -w /work \
-            "${{ matrix.docker_image }}" bash -lc "
-              set -eux
-              apt-get update
-              apt-get install -y \
-                cmake ninja-build g++ git \
-                pkg-config \
-                ca-certificates wget \
-                qt6-base-dev qt6-base-dev-tools \
-                libgl1-mesa-dev mesa-common-dev libglu1-mesa-dev \
-                libx11-dev libxext-dev libxkbcommon-dev \
-                libfftw3-dev \
-                libpng-dev \
-                libjpeg-dev \
-                libyaml-cpp-dev libcurl4-openssl-dev libssl-dev libarchive-dev libgpgme-dev libmagic-dev \
-                curl patchelf squashfs-tools \
-                desktop-file-utils
-
-              cmake -S . -B build -G Ninja \
-                -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
-                -DMID_NANO_VERSION=${GITHUB_REF_NAME}
-              cmake --build build
-
-              mkdir -p tools
-              cd tools
-
-              # linuxdeploy distributes AppImages for x86/x64 only.
-              # For arm64 builds, compile linuxdeploy + linuxdeploy-plugin-qt from source.
-              mkdir -p src
-              cd src
-
-              git clone --depth 1 --recurse-submodules https://github.com/linuxdeploy/linuxdeploy.git
-              cmake -S linuxdeploy -B linuxdeploy/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
-
-              # Upstream generate-excludelist.sh assumes excludelist.h already exists (sha256sum),
-              # so on fresh clones the header may be missing and the build fails.
-              mkdir -p linuxdeploy/build/src/core
-              printf '%s\n' \
-                '#include <string>' \
-                '#include <vector>' \
-                'static const std::vector<std::string> generatedExcludelist = {};' \
-                > linuxdeploy/build/src/core/excludelist.h
-              (cd linuxdeploy/build/src/core && bash ../../../src/core/generate-excludelist.sh) || true
-
-              cmake --build linuxdeploy/build --target linuxdeploy
-              install -m 0755 \"\$(find linuxdeploy/build -type f -name linuxdeploy -perm -111 | head -n 1)\" /work/tools/linuxdeploy
-
-              git clone --depth 1 --recurse-submodules https://github.com/linuxdeploy/linuxdeploy-plugin-qt.git
-              cmake -S linuxdeploy-plugin-qt -B linuxdeploy-plugin-qt/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
-              cmake --build linuxdeploy-plugin-qt/build --target linuxdeploy-plugin-qt
-              install -m 0755 \"\$(find linuxdeploy-plugin-qt/build -type f -name linuxdeploy-plugin-qt -perm -111 | head -n 1)\" /work/tools/linuxdeploy-plugin-qt
-
-              cd /work/tools
-              if curl -fL -o appimagetool.AppImage \"https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${{ matrix.appimage_arch }}.AppImage\"; then
-                chmod +x appimagetool.AppImage
-                ln -sf appimagetool.AppImage appimagetool
-              else
-                echo \"appimagetool AppImage not available for ${{ matrix.appimage_arch }}, building from source...\"
-                cd src
-                git clone --depth 1 --recurse-submodules https://github.com/AppImage/appimagetool.git
-                cmake -S appimagetool -B appimagetool/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
-                cmake --build appimagetool/build --target appimagetool
-                install -m 0755 \"\$(find appimagetool/build -type f -name appimagetool -perm -111 | head -n 1)\" /work/tools/appimagetool
-              fi
-
-              export PATH=\"/work/tools:\${PATH}\"
-
-              cd /work
-              chmod +x scripts/package-linux.sh
-              QMAKE_BIN=\$(command -v qmake6 || command -v qmake || true)
-              if [[ -n \"\${QMAKE_BIN}\" ]]; then export QMAKE=\"\${QMAKE_BIN}\"; fi
-
-              scripts/package-linux.sh \
-                --version \"${GITHUB_REF_NAME}\" \
-                --deb-arch \"${{ matrix.deb_arch }}\" \
-                --appimage-arch \"${{ matrix.appimage_arch }}\" \
-                --build-dir build \
-                --out-dir dist
-            "
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
