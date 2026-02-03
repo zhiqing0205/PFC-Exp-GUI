@@ -61,6 +61,11 @@ QTabBar::base {
   background: transparent;
 }
 
+QTabWidget#mainTabs::right-corner, QTabWidget#mainTabs::left-corner {
+  background: transparent;
+  border: 0px;
+}
+
 QTabBar::tab {
   background: #EEF2F7;
   border: 1px solid #D8DEE9;

@@ -174,12 +174,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     aboutBtn->setIcon(style()->standardIcon(QStyle::SP_MessageBoxInformation));
 
     auto* tabs = new QTabWidget;
+    tabs->setObjectName("mainTabs");
     tabs->setDocumentMode(true);
     tabs->setUsesScrollButtons(true);
     tabs->tabBar()->setDrawBase(false);
     tabs->tabBar()->setExpanding(false);
 
     auto* tabActions = new QWidget;
+    tabActions->setObjectName("mainTabsActions");
     auto* tabActionsLayout = new QHBoxLayout;
     tabActionsLayout->setContentsMargins(0, 0, 0, 0);
     tabActionsLayout->setSpacing(10);
