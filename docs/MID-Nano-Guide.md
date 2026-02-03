@@ -138,13 +138,14 @@ MID Nano-0.4.1-linux-x86_64.AppImage
 2) 便携版（`*-win-x64.zip`）
 
 1. 解压 zip 到任意目录（建议放在非系统目录，如 `D:\Apps\MID Nano\`）。
-2. 双击运行 `MID Nano.exe`。
+2. 确保解压后 `MID Nano.exe` 与 `app/` 文件夹在同一目录（不要移动/删除 `app/`）。
+3. 双击运行 `MID Nano.exe`。
 
-无论哪种方式，请确保 `pfc-exp-cli.exe` 与 GUI 在同一目录（发布版已包含）。
+发布版会将 `pfc-exp-cli.exe` 与依赖文件放在 `app/` 内，无需手动复制。
 
 > （截图占位：Windows 解压后的目录结构）
 >
-> 建议标注：① `MID Nano.exe`；② `pfc-exp-cli.exe`；③ 依赖 DLL（如有）。
+> 建议标注：① `MID Nano.exe`；② `app/` 文件夹；③ `app/pfc-exp-cli.exe`。
 
 **macOS**
 
@@ -204,12 +205,12 @@ MID Nano-0.4.1-linux-x86_64.AppImage
 
 ### 4.1 主窗口布局
 
-主窗口由三部分组成：顶部为快捷按钮区（Upload License / About），中间为功能标签页，下方为日志区域（可拖动分隔条调整高度）。
+主窗口由两部分组成：上方为功能标签页（右侧提供 `Upload License… / About` 快捷入口），底部为状态栏（显示最新一条 Log）。单击状态栏可打开独立的 Log 窗口查看完整输出。
 
 > （截图占位：主窗口全景）
 >
 > 建议标注：
-> ① 顶部快捷按钮；② 标签页；③ 参数区；④ 输出区；⑤ 进度条；⑥ Log（可调高度）。
+> ① 标签页；② 右侧快捷入口（Upload License… / About）；③ 参数区；④ 输出区；⑤ 进度条；⑥ 底部状态栏（Log）。
 
 ### 4.2 标签页说明
 
@@ -221,6 +222,7 @@ MID Nano-0.4.1-linux-x86_64.AppImage
 
 ### 4.3 日志（Log）与进度条（Progress）
 
+- 底部状态栏会显示最新一条 `Log`；单击可打开独立 Log 窗口查看完整内容。
 - `Log` 会打印每次运行的输出目录、执行命令、CLI 输出与错误提示。
 - Experiment 会显示“当前 run 的 step 进度”；当总运行数 > 1 时，还会显示“整体 run 进度”（按队列完成比例更新）。
 
@@ -343,8 +345,8 @@ GUI 会对所有参数的序列做笛卡尔积组合，生成任务队列并依�
 
 ### 7.2 快捷操作与交互说明
 
-- `Log` 区域高度：拖动中间分隔条调整。
+- `Log`：底部状态栏显示最新一条，单击可打开 Log 窗口。
 - `Plot` 热图缩放：滚轮缩放。
 - `Plot` 热图平移：鼠标左键按住拖动。
 - 目录快速定位：`Open Output` 打开当前输出目录。
-- 快捷入口：顶部 `About` 查看版本与链接；`Upload License…` 保存 license 文件。
+- 快捷入口：标签栏右侧 `About` 查看版本与链接；`Upload License…` 保存 license 文件。

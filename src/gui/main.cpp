@@ -365,6 +365,23 @@ QHeaderView::section {
   padding: 6px 8px;
   border: 0px;
 }
+
+QStatusBar {
+  background: #EEF2F7;
+  border-top: 1px solid #D8DEE9;
+}
+QStatusBar::item {
+  border: 0px;
+}
+QStatusBar QToolButton {
+  background: transparent;
+  border: 0px;
+  padding: 6px 10px;
+  border-radius: 10px;
+}
+QStatusBar QToolButton:hover {
+  background: #E5E7EB;
+}
 )QSS");
 }
 
