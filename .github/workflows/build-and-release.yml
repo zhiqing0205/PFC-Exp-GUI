@@ -25,10 +25,12 @@ jobs:
             appimage_arch: x86_64
             linuxdeploy_arch: x86_64
           - id: linux-arm64
-            os: ubuntu-22.04-arm64
+            os: ubuntu-latest
             deb_arch: arm64
             appimage_arch: aarch64
             linuxdeploy_arch: aarch64
+            docker_platform: linux/arm64
+            docker_image: ubuntu:22.04
           - id: mac-arm64
             os: macos-14
             osx_arch: arm64
@@ -86,7 +88,7 @@ jobs:
           runVcpkgInstall: true
 
       - name: Install deps (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && !matrix.docker_platform
         shell: bash
         run: |
           sudo apt-get update
@@ -96,6 +98,12 @@ jobs:
             libfftw3-dev \
             curl patchelf squashfs-tools \
             desktop-file-utils
+
+      - name: Setup QEMU (Linux arm64 via Docker)
+        if: runner.os == 'Linux' && matrix.docker_platform
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
       - name: Install FFTW (macOS)
         if: runner.os == 'macOS'
@@ -132,7 +140,7 @@ jobs:
             -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl
 
       - name: Configure (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && !matrix.docker_platform
         shell: bash
         run: |
           cmake -S "${{ steps.proj.outputs.src_dir }}" -B build -G Ninja \
@@ -154,8 +162,13 @@ jobs:
         shell: pwsh
         run: cmake --build build
 
-      - name: Build (Linux/macOS)
-        if: runner.os != 'Windows'
+      - name: Build (Linux)
+        if: runner.os == 'Linux' && !matrix.docker_platform
+        shell: bash
+        run: cmake --build build
+
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
         shell: bash
         run: cmake --build build
 
@@ -230,7 +243,7 @@ jobs:
           & $makensis "/DAPP_VERSION=$version" "/DSOURCE_DIR=$srcDir" "/DOUT_FILE=$outExe" $nsi
 
       - name: Setup linuxdeploy (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && !matrix.docker_platform
         shell: bash
         run: |
           set -eux
@@ -244,7 +257,7 @@ jobs:
           echo "${PWD}" >> "$GITHUB_PATH"
 
       - name: Package (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && !matrix.docker_platform
         shell: bash
         run: |
           set -eux
@@ -262,6 +275,52 @@ jobs:
             --appimage-arch "${{ matrix.appimage_arch }}" \
             --build-dir build \
             --out-dir dist
+
+      - name: Build + Package (Linux arm64 via Docker)
+        if: runner.os == 'Linux' && matrix.docker_platform
+        shell: bash
+        run: |
+          set -eux
+          mkdir -p dist tools
+
+          docker run --rm --platform "${{ matrix.docker_platform }}" \
+            -v "${GITHUB_WORKSPACE}:/work" -w /work \
+            "${{ matrix.docker_image }}" bash -lc "
+              set -eux
+              apt-get update
+              apt-get install -y \
+                cmake ninja-build g++ git \
+                qt6-base-dev qt6-base-dev-tools \
+                libfftw3-dev \
+                curl patchelf squashfs-tools \
+                desktop-file-utils
+
+              cmake -S . -B build -G Ninja \
+                -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+                -DMID_NANO_VERSION=${GITHUB_REF_NAME}
+              cmake --build build
+
+              mkdir -p tools
+              cd tools
+              curl -L -o linuxdeploy.AppImage \"https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.linuxdeploy_arch }}.AppImage\"
+              curl -L -o linuxdeploy-plugin-qt.AppImage \"https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-${{ matrix.linuxdeploy_arch }}.AppImage\"
+              chmod +x linuxdeploy.AppImage linuxdeploy-plugin-qt.AppImage
+              ln -sf linuxdeploy.AppImage linuxdeploy
+              ln -sf linuxdeploy-plugin-qt.AppImage linuxdeploy-plugin-qt
+              export PATH=\"\${PWD}:\${PATH}\"
+
+              cd /work
+              chmod +x scripts/package-linux.sh
+              QMAKE_BIN=\$(command -v qmake6 || command -v qmake || true)
+              if [[ -n \"\${QMAKE_BIN}\" ]]; then export QMAKE=\"\${QMAKE_BIN}\"; fi
+
+              scripts/package-linux.sh \
+                --version \"${GITHUB_REF_NAME}\" \
+                --deb-arch \"${{ matrix.deb_arch }}\" \
+                --appimage-arch \"${{ matrix.appimage_arch }}\" \
+                --build-dir build \
+                --out-dir dist
+            "
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
