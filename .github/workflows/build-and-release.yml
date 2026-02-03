@@ -301,6 +301,7 @@ jobs:
                 libx11-dev libxext-dev libxkbcommon-dev \
                 libfftw3-dev \
                 libpng-dev \
+                libjpeg-dev \
                 libyaml-cpp-dev libcurl4-openssl-dev libssl-dev libarchive-dev libgpgme-dev libmagic-dev \
                 curl patchelf squashfs-tools \
                 desktop-file-utils
