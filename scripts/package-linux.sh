@@ -4,12 +4,13 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/package-linux.sh --version <tag> --deb-arch <amd64|arm64> --appimage-arch <x86_64|aarch64> [--build-dir build] [--out-dir dist]
+  scripts/package-linux.sh --version <tag> --deb-arch <amd64|arm64> --appimage-arch <x86_64|aarch64> [--skip-appimage] [--build-dir build] [--out-dir dist]
 
 Inputs:
   --version         Git tag name (e.g. 0.3.10 or v0.3.10)
   --deb-arch        Debian arch for .deb (amd64 / arm64)
   --appimage-arch   AppImage arch (x86_64 / aarch64)
+  --skip-appimage   Only build the .deb package (skip AppImage)
   --build-dir       CMake build dir (default: build)
   --out-dir         Output dir for final artifacts (default: dist)
 EOF
@@ -18,6 +19,7 @@ EOF
 VERSION=""
 DEB_ARCH=""
 APPIMAGE_ARCH=""
+SKIP_APPIMAGE=0
 BUILD_DIR="build"
 OUT_DIR="dist"
 
@@ -26,6 +28,7 @@ while [[ $# -gt 0 ]]; do
     --version) VERSION="${2:-}"; shift 2 ;;
     --deb-arch) DEB_ARCH="${2:-}"; shift 2 ;;
     --appimage-arch) APPIMAGE_ARCH="${2:-}"; shift 2 ;;
+    --skip-appimage) SKIP_APPIMAGE=1; shift 1 ;;
     --build-dir) BUILD_DIR="${2:-}"; shift 2 ;;
     --out-dir) OUT_DIR="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -109,6 +112,11 @@ dpkg-deb --build --root-owner-group "${deb_root}" "${deb_out}"
 ###############################################################################
 # .AppImage (bundled Qt)
 ###############################################################################
+
+if [[ "${SKIP_APPIMAGE}" == "1" ]]; then
+  echo "Skipping AppImage packaging (--skip-appimage)."
+  exit 0
+fi
 
 if ! command -v linuxdeploy >/dev/null 2>&1; then
   echo "linuxdeploy is required in PATH for AppImage packaging." >&2

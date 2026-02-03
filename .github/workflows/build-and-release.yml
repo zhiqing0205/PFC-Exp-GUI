@@ -289,6 +289,7 @@ jobs:
                 --version "${GITHUB_REF_NAME}" \
                 --deb-arch "${DEB_ARCH}" \
                 --appimage-arch "${APPIMAGE_ARCH}" \
+                --skip-appimage \
                 --build-dir build \
                 --out-dir dist
             '
