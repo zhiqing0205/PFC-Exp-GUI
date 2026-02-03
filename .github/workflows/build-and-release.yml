@@ -19,16 +19,32 @@ jobs:
         include:
           - id: win-x64
             os: windows-latest
+            qt_arch: win64_msvc2019_64
+            msvc_arch: x64
+            vcpkg_triplet: x64-windows
+          - id: win-arm64
+            os: windows-latest
+            qt_arch: win64_msvc2019_arm64
+            msvc_arch: amd64_arm64
+            vcpkg_triplet: arm64-windows
           - id: linux-amd64
             os: ubuntu-latest
             deb_arch: amd64
             appimage_arch: x86_64
             linuxdeploy_arch: x86_64
+          - id: linux-arm64
+            os: ubuntu-latest
+            docker_platform: linux/arm64
+            deb_arch: arm64
+            appimage_arch: aarch64
+            linuxdeploy_arch: aarch64
           - id: mac-arm64
             os: macos-14
+            qt_arch: clang_64
             osx_arch: arm64
           - id: mac-x64
             os: macos-15-intel
+            qt_arch: clang_64
             osx_arch: x86_64
     runs-on: ${{ matrix.os }}
 
@@ -60,6 +76,7 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
+          arch: ${{ matrix.qt_arch }}
           cache: true
 
       - name: Clean Qt cache (retry)
@@ -76,6 +93,7 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
+          arch: ${{ matrix.qt_arch }}
           cache: true
 
       - name: Select Qt path
@@ -111,7 +129,7 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: x64
+          arch: ${{ matrix.msvc_arch }}
 
       - name: Setup Ninja (Windows)
         if: runner.os == 'Windows'
@@ -121,6 +139,8 @@ jobs:
         if: runner.os == 'Windows'
         id: vcpkg
         uses: lukka/run-vcpkg@v11
+        env:
+          VCPKG_DEFAULT_TRIPLET: ${{ matrix.vcpkg_triplet }}
         with:
           vcpkgJsonGlob: "vcpkg.json"
           vcpkgGitCommitId: "389d14fa0e0692f36967e9eb5499e909317644d5"
@@ -171,7 +191,7 @@ jobs:
             -DCMAKE_BUILD_TYPE="${{ env.BUILD_TYPE }}" `
             -DCMAKE_PREFIX_PATH="${{ steps.qt.outputs.qt-path }}" `
             -DCMAKE_TOOLCHAIN_FILE="$toolchain" `
-            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.vcpkg_triplet }} `
             -DMID_NANO_VERSION="$env:GITHUB_REF_NAME" `
             -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl
 
@@ -202,6 +222,76 @@ jobs:
         if: runner.os == 'Linux' && !matrix.docker_platform
         shell: bash
         run: cmake --build build
+
+      - name: Build & package (Linux arm64 via Docker)
+        if: runner.os == 'Linux' && matrix.docker_platform
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build & package (Linux arm64)
+        if: runner.os == 'Linux' && matrix.docker_platform
+        shell: bash
+        run: |
+          set -eux
+
+          rm -rf dist build tools || true
+          mkdir -p dist
+
+          docker run --rm --platform "${{ matrix.docker_platform }}" \
+            -v "${PWD}:/work" -w /work \
+            -e "GITHUB_REF_NAME=${GITHUB_REF_NAME}" \
+            -e "SRC_DIR=${{ steps.proj.outputs.src_dir }}" \
+            -e "DEB_ARCH=${{ matrix.deb_arch }}" \
+            -e "APPIMAGE_ARCH=${{ matrix.appimage_arch }}" \
+            -e "LINUXDEPLOY_ARCH=${{ matrix.linuxdeploy_arch }}" \
+            ubuntu:22.04 bash -lc '
+              set -eux
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                ca-certificates curl \
+                cmake ninja-build g++ \
+                qt6-base-dev qt6-base-dev-tools \
+                libgl1-mesa-dev mesa-common-dev libglu1-mesa-dev \
+                libx11-dev libxext-dev libxkbcommon-dev \
+                libfftw3-dev \
+                patchelf squashfs-tools desktop-file-utils
+
+              cd /work
+
+              cmake -S "${SRC_DIR}" -B build -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DMID_NANO_VERSION="${GITHUB_REF_NAME}"
+
+              cmake --build build
+
+              mkdir -p tools
+              cd tools
+              curl -L -o linuxdeploy.AppImage "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${LINUXDEPLOY_ARCH}.AppImage"
+              curl -L -o linuxdeploy-plugin-qt.AppImage "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-${LINUXDEPLOY_ARCH}.AppImage"
+              curl -L -o appimagetool.AppImage "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${APPIMAGE_ARCH}.AppImage"
+              chmod +x linuxdeploy.AppImage linuxdeploy-plugin-qt.AppImage appimagetool.AppImage
+              ln -sf linuxdeploy.AppImage linuxdeploy
+              ln -sf linuxdeploy-plugin-qt.AppImage linuxdeploy-plugin-qt
+              ln -sf appimagetool.AppImage appimagetool
+              export PATH="/work/tools:${PATH}"
+
+              cd /work
+              chmod +x scripts/package-linux.sh
+
+              QMAKE_BIN="$(command -v qmake6 || command -v qmake || true)"
+              if [[ -n "${QMAKE_BIN}" ]]; then
+                export QMAKE="${QMAKE_BIN}"
+              fi
+
+              scripts/package-linux.sh \
+                --version "${GITHUB_REF_NAME}" \
+                --deb-arch "${DEB_ARCH}" \
+                --appimage-arch "${APPIMAGE_ARCH}" \
+                --build-dir build \
+                --out-dir dist
+            '
 
       - name: Build (macOS)
         if: runner.os == 'macOS'
@@ -237,7 +327,7 @@ jobs:
           windeployqt --release --compiler-runtime "stage/app/MID Nano.exe"
 
           # Bundle vcpkg runtime DLLs (needed e.g. for FFTW3).
-          $triplet = "x64-windows"
+          $triplet = "${{ matrix.vcpkg_triplet }}"
           $candidateBins = @()
           $candidateBins += (Join-Path $env:GITHUB_WORKSPACE "vcpkg_installed\\$triplet\\bin")
           $candidateBins += (Join-Path $env:GITHUB_WORKSPACE "build\\vcpkg_installed\\$triplet\\bin")
@@ -266,11 +356,11 @@ jobs:
             $fftw | ForEach-Object { Write-Host "  - $($_.Name)" }
           }
 
-          $zip = "MID Nano-$version-win-x64.zip"
+          $zip = "MID Nano-$version-${{ matrix.id }}.zip"
           Compress-Archive -Path "stage/*" -DestinationPath (Join-Path "dist" $zip) -Force
 
           $nsi = Join-Path $env:GITHUB_WORKSPACE "packaging\\windows\\installer.nsi"
-          $outExe = Join-Path $env:GITHUB_WORKSPACE ("dist\\MID Nano-$version-win-x64.exe")
+          $outExe = Join-Path $env:GITHUB_WORKSPACE ("dist\\MID Nano-$version-${{ matrix.id }}.exe")
           $srcDir = Join-Path $env:GITHUB_WORKSPACE "stage"
           $makensis = (Get-Command makensis.exe -ErrorAction SilentlyContinue).Source
           if (-not $makensis) {
