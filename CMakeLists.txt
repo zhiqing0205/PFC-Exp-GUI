@@ -55,8 +55,13 @@ target_link_libraries(pfc_exp_gui PRIVATE Qt6::Widgets)
 set_target_properties(pfc_exp_gui PROPERTIES OUTPUT_NAME "MID Nano")
 
 if(WIN32)
+  target_sources(pfc_exp_gui PRIVATE
+    src/gui/windows_icon.rc
+  )
+
   add_executable(mid_nano_launcher WIN32
     src/launcher/windows_launcher.cpp
+    src/launcher/windows_icon.rc
   )
   set_target_properties(mid_nano_launcher PROPERTIES OUTPUT_NAME "mid-nano-launcher")
 endif()
