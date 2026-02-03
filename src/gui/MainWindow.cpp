@@ -2199,24 +2199,30 @@ void MainWindow::showAboutDialog() {
     QDialog dlg(this);
     dlg.setWindowTitle("About " + appName);
     dlg.setModal(true);
-    dlg.resize(620, 520);
+    dlg.resize(520, 420);
 
     auto* layout = new QVBoxLayout(&dlg);
     layout->setSpacing(12);
 
-    auto* title = new QLabel(QString("<span style='font-size:16pt; font-weight:700;'>%1</span>").arg(appName.toHtmlEscaped()));
+    auto* title = new QLabel(QString("<div style='font-size:18pt; font-weight:700;'>%1</div>"
+                                     "<div style='font-size:11pt; color:#6B7280;'>%2</div>")
+                                 .arg(appName.toHtmlEscaped())
+                                 .arg(QString("Version %1").arg(version).toHtmlEscaped()));
     title->setTextFormat(Qt::RichText);
+    title->setAlignment(Qt::AlignHCenter);
     layout->addWidget(title);
 
-    auto* scroll = new QScrollArea;
-    scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setWidgetResizable(true);
+    auto* form = new QFormLayout;
+    form->setLabelAlignment(Qt::AlignRight);
 
-    auto* content = new QWidget;
-    auto* contentLayout = new QVBoxLayout(content);
-    contentLayout->setContentsMargins(0, 0, 0, 0);
-    contentLayout->setSpacing(10);
-
+    auto makeKeyLabel = [](const QString& text) {
+        auto* l = new QLabel(text);
+        QFont f = l->font();
+        f.setBold(true);
+        l->setFont(f);
+        l->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        return l;
+    };
     auto makeValueLabel = [](const QString& html) {
         auto* l = new QLabel(html);
         l->setTextFormat(Qt::RichText);
@@ -2226,81 +2232,27 @@ void MainWindow::showAboutDialog() {
         return l;
     };
 
-    auto addRow = [](QFormLayout* form, const QString& key, QWidget* value) {
-        auto* k = new QLabel(key);
-        QFont f = k->font();
-        f.setBold(true);
-        k->setFont(f);
-        k->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        form->addRow(k, value);
-    };
-
-    // License (user-provided)
+    // License status (user-provided)
     {
         const QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
         bool installed = false;
-        QString fileName;
-        QString location;
         if (!appDataDir.isEmpty()) {
             QDir dir(appDataDir);
             const QStringList files = dir.entryList(QStringList() << "license.*", QDir::Files);
-            if (!files.isEmpty()) {
-                installed = true;
-                fileName = files.first();
-                location = dir.filePath(files.first());
-            }
+            installed = !files.isEmpty();
         }
-
-        const QString statusHtml = installed ? QString("<span style='color:#16A34A; font-weight:700;'>Installed</span> <span style='color:#6B7280;'>(%1)</span>")
-                                                   .arg(fileName.toHtmlEscaped())
+        const QString statusHtml = installed ? QString("<span style='color:#16A34A; font-weight:700;'>Installed</span>")
                                              : QString("<span style='color:#DC2626; font-weight:700;'>Not installed</span>");
-
-        auto* box = new QGroupBox("License");
-        auto* form = new QFormLayout;
-        form->setLabelAlignment(Qt::AlignRight);
-        addRow(form, "Status", makeValueLabel(statusHtml));
-        addRow(form, "Location", makeValueLabel(location.isEmpty() ? QString("<span style='color:#DC2626;'>—</span>") : QString("<code>%1</code>").arg(location.toHtmlEscaped())));
-        box->setLayout(form);
-        contentLayout->addWidget(box);
+        form->addRow(makeKeyLabel("License"), makeValueLabel(statusHtml));
     }
 
-    // Project
-    {
-        auto* box = new QGroupBox("Project");
-        auto* form = new QFormLayout;
-        form->setLabelAlignment(Qt::AlignRight);
-        addRow(form, "Name", makeValueLabel(appName.toHtmlEscaped()));
-        addRow(form, "Version", makeValueLabel(version.toHtmlEscaped()));
-        addRow(form, "Author", makeValueLabel(author.toHtmlEscaped()));
-        box->setLayout(form);
-        contentLayout->addWidget(box);
-    }
+    form->addRow(makeKeyLabel("Author"), makeValueLabel(author.toHtmlEscaped()));
+    form->addRow(makeKeyLabel("GitHub"), makeValueLabel(QString("<a href=\"%1\">%1</a>").arg(githubUrl.toHtmlEscaped())));
+    form->addRow(makeKeyLabel("Gitee"), makeValueLabel(QString("<a href=\"%1\">%1</a>").arg(giteeUrl.toHtmlEscaped())));
+    form->addRow(makeKeyLabel("Qt"), makeValueLabel(QString("<a href=\"https://www.qt.io\">https://www.qt.io</a>")));
+    form->addRow(makeKeyLabel("FFTW"), makeValueLabel(QString("<a href=\"https://www.fftw.org\">https://www.fftw.org</a>")));
 
-    // Links
-    {
-        auto* box = new QGroupBox("Links");
-        auto* form = new QFormLayout;
-        form->setLabelAlignment(Qt::AlignRight);
-        addRow(form, "GitHub", makeValueLabel(QString("<a href=\"%1\">%1</a>").arg(githubUrl.toHtmlEscaped())));
-        addRow(form, "Gitee", makeValueLabel(QString("<a href=\"%1\">%1</a>").arg(giteeUrl.toHtmlEscaped())));
-        box->setLayout(form);
-        contentLayout->addWidget(box);
-    }
-
-    // Dependencies
-    {
-        auto* box = new QGroupBox("Dependencies");
-        auto* form = new QFormLayout;
-        form->setLabelAlignment(Qt::AlignRight);
-        addRow(form, "Qt", makeValueLabel(QString("Qt %1 (Widgets)").arg(QString::fromUtf8(qVersion()).toHtmlEscaped())));
-        addRow(form, "FFTW", makeValueLabel("FFTW3 (used by <code>pfc-exp-cli</code>)"));
-        box->setLayout(form);
-        contentLayout->addWidget(box);
-    }
-
-    contentLayout->addStretch(1);
-    scroll->setWidget(content);
-    layout->addWidget(scroll, 1);
+    layout->addLayout(form);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok);
     connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
