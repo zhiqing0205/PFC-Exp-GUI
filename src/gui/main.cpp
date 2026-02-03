@@ -180,11 +180,47 @@ QLineEdit, QSpinBox, QDoubleSpinBox {
   background: #FFFFFF;
   border: 1px solid #CBD5E1;
   border-radius: 10px;
-  padding: 6px 8px;
   selection-background-color: #2563EB;
+}
+QLineEdit {
+  padding: 6px 8px;
+}
+QSpinBox, QDoubleSpinBox {
+  padding: 6px 34px 6px 10px;
 }
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
   border: 1px solid #2563EB;
+}
+
+QSpinBox::up-button, QDoubleSpinBox::up-button {
+  subcontrol-origin: border;
+  subcontrol-position: top right;
+  width: 26px;
+  border-left: 1px solid #E5E7EB;
+  border-top-right-radius: 10px;
+  background: transparent;
+}
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+  subcontrol-origin: border;
+  subcontrol-position: bottom right;
+  width: 26px;
+  border-left: 1px solid #E5E7EB;
+  border-bottom-right-radius: 10px;
+  background: transparent;
+}
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {
+  background: #E5E7EB;
+}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+  image: url(:/icons/chevron-up.svg);
+  width: 12px;
+  height: 12px;
+}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+  image: url(:/icons/chevron-down.svg);
+  width: 12px;
+  height: 12px;
 }
 
 QPlainTextEdit {
