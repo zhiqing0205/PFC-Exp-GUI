@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/package-linux.sh --version <tag> --deb-arch <amd64|arm64> --appimage-arch <x86_64|aarch64> [--skip-appimage] [--build-dir build] [--out-dir dist]
+  scripts/package-linux.sh --version <tag> --deb-arch <amd64|arm64> [--appimage-arch <x86_64|aarch64>] [--skip-appimage] [--build-dir build] [--out-dir dist]
 
 Inputs:
   --version         Git tag name (e.g. 0.3.10 or v0.3.10)
@@ -36,8 +36,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "${VERSION}" || -z "${DEB_ARCH}" || -z "${APPIMAGE_ARCH}" ]]; then
+if [[ -z "${VERSION}" || -z "${DEB_ARCH}" ]]; then
   echo "Missing required args." >&2
+  usage
+  exit 2
+fi
+if [[ "${SKIP_APPIMAGE}" != "1" && -z "${APPIMAGE_ARCH}" ]]; then
+  echo "Missing required args: --appimage-arch (or pass --skip-appimage)." >&2
   usage
   exit 2
 fi
