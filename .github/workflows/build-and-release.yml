@@ -509,11 +509,12 @@ jobs:
 
           DMG_ROOT="$(mktemp -d)"
           cp -R "stage/MID Nano.app" "${DMG_ROOT}/"
+          # Provide a simple drag-to-install hint (App + /Applications shortcut).
+          ln -s /Applications "${DMG_ROOT}/Applications" || true
 
           # hdiutil can sporadically fail with "Resource busy" on GitHub-hosted runners.
           # Work around it by creating the DMG in a temp path and retrying a few times.
-          DMG_TMP="$(mktemp -t mid-nano.XXXXXX.dmg)"
-          rm -f "${DMG_TMP}"
+          DMG_TMP="$(mktemp "${RUNNER_TEMP:-/tmp}/mid-nano.XXXXXX.dmg")"
 
           for i in 1 2 3 4 5; do
             echo "Creating DMG (attempt ${i})..."
@@ -522,10 +523,14 @@ jobs:
             fi
             echo "hdiutil create failed (attempt ${i})."
             hdiutil info || true
+            rm -f "${DMG_TMP}" "${DMG_TMP}.dmg" || true
             sleep 2
           done
 
           mkdir -p dist
+          if [[ ! -f "${DMG_TMP}" && -f "${DMG_TMP}.dmg" ]]; then
+            DMG_TMP="${DMG_TMP}.dmg"
+          fi
           mv -f "${DMG_TMP}" "dist/${DMG}"
           rm -rf "${DMG_ROOT}"
 
