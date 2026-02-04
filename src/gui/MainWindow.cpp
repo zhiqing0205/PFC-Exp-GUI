@@ -45,7 +45,6 @@
 #include <QTabBar>
 #include <QTabWidget>
 #include <QSignalBlocker>
-#include <QTimer>
 #include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -743,18 +742,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         exportResultsImage();
     });
 
-    resultsRefreshTimer_ = new QTimer(this);
-    resultsRefreshTimer_->setInterval(3000);
-    connect(resultsRefreshTimer_, &QTimer::timeout, this, [this]() {
-        if (!resultsDir_) return;
-        const QString dirPath = resultsDir_->text().trimmed();
-        if (dirPath.isEmpty()) return;
-        QDir dir(dirPath);
-        if (!dir.exists()) return;
-        refreshResultsFileList();
-    });
-    resultsRefreshTimer_->start();
-
     // ---------- Roadmap tabs (placeholders) ----------
     auto setupRoadmapTab = [](QWidget* tab, const QString& title, const QString& desc, const QStringList& bullets) {
         auto* layout = new QVBoxLayout;
@@ -924,70 +911,44 @@ void MainWindow::resetResultsViewState() {
 void MainWindow::refreshResultsFileList() {
     if (!resultsDir_ || !resultsStatus_ || !resultsFiles_ || !resultsViewTabs_ || !resultsTable_) return;
 
+    const QString prev = resultsFiles_->currentItem() ? resultsFiles_->currentItem()->text() : QString();
+
+    resultsFiles_->clear();
+    resetResultsViewState();
+
     const QString dirPath = resultsDir_->text().trimmed();
     if (dirPath.isEmpty()) {
         resultsStatus_->setText("Run directory is empty.");
-        resultsFiles_->clear();
-        resetResultsViewState();
         return;
     }
     QDir dir(dirPath);
     if (!dir.exists()) {
         resultsStatus_->setText("Directory not found: " + dirPath);
-        resultsFiles_->clear();
-        resetResultsViewState();
         return;
     }
 
     const QStringList files = dir.entryList(QStringList() << "*.txt", QDir::Files, QDir::Name);
     if (files.isEmpty()) {
         resultsStatus_->setText("No .txt files found in: " + dirPath);
-        resultsFiles_->clear();
-        resetResultsViewState();
         return;
     }
 
-    const QString prevSelected = resultsFiles_->currentItem() ? resultsFiles_->currentItem()->text() : QString();
-    const QString loadedName = resultsCurrentFile_.isEmpty() ? QString() : QFileInfo(resultsCurrentFile_).fileName();
-    const int prevScroll = resultsFiles_->verticalScrollBar() ? resultsFiles_->verticalScrollBar()->value() : 0;
-
-    {
-        QSignalBlocker blocker(resultsFiles_);
-        resultsFiles_->clear();
-        resultsFiles_->setUpdatesEnabled(false);
-        for (const QString& file : files) {
-            auto* item = new QListWidgetItem(file);
-            item->setToolTip(dir.filePath(file));
-            resultsFiles_->addItem(item);
-        }
-        resultsFiles_->setUpdatesEnabled(true);
-
-        QString desired = prevSelected;
-        if (desired.isEmpty()) desired = loadedName;
-
-        if (!desired.isEmpty()) {
-            const QList<QListWidgetItem*> matches = resultsFiles_->findItems(desired, Qt::MatchExactly);
-            if (!matches.isEmpty()) {
-                resultsFiles_->setCurrentItem(matches.first());
-            }
-        }
-        if (!resultsFiles_->currentItem() && resultsFiles_->count() > 0) {
-            resultsFiles_->setCurrentRow(0);
-        }
-        if (resultsFiles_->verticalScrollBar()) resultsFiles_->verticalScrollBar()->setValue(prevScroll);
+    for (const QString& file : files) {
+        auto* item = new QListWidgetItem(file);
+        item->setToolTip(dir.filePath(file));
+        resultsFiles_->addItem(item);
     }
 
     resultsStatus_->setText(QString("Found %1 .txt file(s). Select one to inspect.").arg(files.size()));
 
-    const QString selectedNow = resultsFiles_->currentItem() ? resultsFiles_->currentItem()->text() : QString();
-    if (selectedNow.trimmed().isEmpty()) {
-        resetResultsViewState();
-        return;
+    if (!prev.isEmpty()) {
+        const QList<QListWidgetItem*> matches = resultsFiles_->findItems(prev, Qt::MatchExactly);
+        if (!matches.isEmpty()) {
+            resultsFiles_->setCurrentItem(matches.first());
+            return;
+        }
     }
-
-    const QString currentPath = resultsCurrentFile_.isEmpty() ? QString() : QFileInfo(resultsCurrentFile_).absoluteFilePath();
-    const QString selectedPath = QFileInfo(dir.filePath(selectedNow)).absoluteFilePath();
-    if (currentPath != selectedPath) loadResultsFile(selectedPath);
+    resultsFiles_->setCurrentRow(0);
 }
 
 static QVector<double> extractNumbersFromLine(const QString& line) {
@@ -1231,20 +1192,15 @@ void MainWindow::loadResultsFile(const QString& filePath) {
         }
     }
 
-    const int totalRows = rows.size();
-    constexpr int kMaxTableRows = 8000;
-    const int displayRows = std::min(totalRows, kMaxTableRows);
-    resultsTable_->setUpdatesEnabled(false);
-    resultsTable_->setRowCount(displayRows);
+    resultsTable_->setRowCount(rows.size());
     resultsTable_->setColumnCount(maxCols);
-    for (int r = 0; r < displayRows; ++r) {
+    for (int r = 0; r < rows.size(); ++r) {
         for (int c = 0; c < maxCols; ++c) {
             const double v = (c < rows[r].size()) ? rows[r][c] : nan;
             auto* item = new QTableWidgetItem(std::isfinite(v) ? QString::number(v, 'g', 12) : QString());
             resultsTable_->setItem(r, c, item);
         }
     }
-    resultsTable_->setUpdatesEnabled(true);
 
     auto colLabel = [&](int c) -> QString {
         if (maxCols <= 1) return "value";
@@ -1300,19 +1256,13 @@ void MainWindow::loadResultsFile(const QString& filePath) {
                 if (resultsViewTabs_->tabBar()) resultsViewTabs_->tabBar()->setTabVisible(plotTab, true);
             }
         }
-        const QString shownSuffix = (displayRows < totalRows) ? QString(" (showing %1)").arg(displayRows) : QString();
-        resultsStatus_->setText(
-            QString("%1 • %2 row(s)%3 • %4 col(s) • use Plot tab").arg(name).arg(totalRows).arg(shownSuffix).arg(maxCols));
+        resultsStatus_->setText(QString("%1 • %2 row(s) • %3 col(s) • use Plot tab").arg(name).arg(rows.size()).arg(maxCols));
         if (resultsPlotPage_) resultsViewTabs_->setCurrentWidget(resultsPlotPage_);
-        QTimer::singleShot(0, this, [this, filePath]() {
-            if (resultsCurrentFile_ != filePath) return;
-            renderResultsImage();
-        });
+        renderResultsImage();
         return;
     }
 
-    const QString shownSuffix = (displayRows < totalRows) ? QString(" (showing %1)").arg(displayRows) : QString();
-    resultsStatus_->setText(QString("%1 • %2 row(s)%3 • %4 col(s) • table only").arg(name).arg(totalRows).arg(shownSuffix).arg(maxCols));
+    resultsStatus_->setText(QString("%1 • %2 row(s) • %3 col(s) • table only").arg(name).arg(rows.size()).arg(maxCols));
     if (resultsViewTabs_->count() > 0) {
         const int plotTab = resultsPlotPage_ ? resultsViewTabs_->indexOf(resultsPlotPage_) : -1;
         const int tableTab = (plotTab == 0) ? 1 : 0;
@@ -1468,6 +1418,7 @@ void MainWindow::renderResultsImage() {
         return;
     }
 
+    // Build deduplicated point list with averaged values
     struct Pt {
         double x = 0.0;
         double y = 0.0;
@@ -1480,6 +1431,8 @@ void MainWindow::renderResultsImage() {
     double maxX = -std::numeric_limits<double>::infinity();
     double minY = std::numeric_limits<double>::infinity();
     double maxY = -std::numeric_limits<double>::infinity();
+    double minV = std::numeric_limits<double>::infinity();
+    double maxV = -std::numeric_limits<double>::infinity();
 
     for (auto it = dedup.constBegin(); it != dedup.constEnd(); ++it) {
         const Accum& a = it.value();
@@ -1490,6 +1443,8 @@ void MainWindow::renderResultsImage() {
         maxX = std::max(maxX, a.x);
         minY = std::min(minY, a.y);
         maxY = std::max(maxY, a.y);
+        minV = std::min(minV, vAvg);
+        maxV = std::max(maxV, vAvg);
     }
 
     const int uniqueCount = points.size();
@@ -1510,41 +1465,24 @@ void MainWindow::renderResultsImage() {
         width = std::max(1, static_cast<int>(std::lround(static_cast<double>(longSide) * (rangeX / rangeY))));
     }
 
-    const int sigmaRequested = std::clamp(resultsImagePointSize_->value(), 1, 64);
-    int sigmaPx = std::min(sigmaRequested, 32);
-
-    // Auto-cap sigma for very large point clouds to avoid UI freezes.
-    // Roughly bound kernel ops: points * πr² <= kMaxOps, with r = 3σ.
-    constexpr double kMaxKernelOps = 2.0e8;
-    const double maxRadius = std::sqrt(kMaxKernelOps / (3.141592653589793 * static_cast<double>(uniqueCount)));
-    const int sigmaCapByOps = std::max(1, static_cast<int>(std::floor(maxRadius / 3.0)));
-    sigmaPx = std::max(1, std::min(sigmaPx, sigmaCapByOps));
-
-    const int radiusPx = std::max(1, sigmaPx * 3);
+    // ========================================================================
+    // Step 2: Gaussian kernel interpolation
+    // ========================================================================
+    // Interpret "Smooth σ (px)" spinbox value as σ (Gaussian standard deviation).
+    // Use search radius R = 3σ for Gaussian kernel: w(d) = exp(-d²/(2σ²))
+    const int sigmaPx = std::clamp(resultsImagePointSize_->value(), 1, 64);
+    const int radiusPx = sigmaPx * 3;  // Search radius R = 3σ
     const int r2 = radiusPx * radiusPx;
     const double sigma = std::max(1e-6, static_cast<double>(sigmaPx));
     const double invTwoSigma2 = 1.0 / (2.0 * sigma * sigma);
 
+    // Pre-compute Gaussian weights by squared distance
     QVector<float> wByD2(r2 + 1, 0.0f);
     for (int d2 = 0; d2 <= r2; ++d2) {
         wByD2[d2] = static_cast<float>(std::exp(-static_cast<double>(d2) * invTwoSigma2));
     }
 
-    struct Offset {
-        int dx = 0;
-        int dy = 0;
-        int d2 = 0;
-    };
-    QVector<Offset> offsets;
-    offsets.reserve((2 * radiusPx + 1) * (2 * radiusPx + 1));
-    for (int dy = -radiusPx; dy <= radiusPx; ++dy) {
-        for (int dx = -radiusPx; dx <= radiusPx; ++dx) {
-            const int d2 = dx * dx + dy * dy;
-            if (d2 > r2) continue;
-            offsets.push_back(Offset{dx, dy, d2});
-        }
-    }
-
+    // Reuse buffers if possible
     const int pixels = width * height;
     const QSize newSize(width, height);
     if (resultsImageBufferSize_ != newSize) {
@@ -1553,6 +1491,7 @@ void MainWindow::renderResultsImage() {
         resultsImageWsum_.resize(pixels);
         resultsImageWmax_.resize(pixels);
     }
+    // Clear buffers
     std::fill(resultsImageSum_.begin(), resultsImageSum_.end(), 0.0f);
     std::fill(resultsImageWsum_.begin(), resultsImageWsum_.end(), 0.0f);
     std::fill(resultsImageWmax_.begin(), resultsImageWmax_.end(), 0.0f);
@@ -1560,39 +1499,38 @@ void MainWindow::renderResultsImage() {
     const double sx = (width - 1) / rangeX;
     const double sy = (height - 1) / rangeY;
 
+    // Splat each point into its neighborhood
     for (const Pt& pt : points) {
         const int cx = std::clamp(static_cast<int>(std::lround((pt.x - minX) * sx)), 0, width - 1);
         const int cy = std::clamp(static_cast<int>(std::lround((maxY - pt.y) * sy)), 0, height - 1);
-        const float v = static_cast<float>(pt.v);
+        const int x0 = std::max(0, cx - radiusPx);
+        const int x1 = std::min(width - 1, cx + radiusPx);
+        const int y0 = std::max(0, cy - radiusPx);
+        const int y1 = std::min(height - 1, cy + radiusPx);
 
-        for (const auto& off : offsets) {
-            const int px = cx + off.dx;
-            const int py = cy + off.dy;
-            if (px < 0 || px >= width || py < 0 || py >= height) continue;
-            const int idx = py * width + px;
-            const float w = wByD2[off.d2];
-            resultsImageWsum_[idx] += w;
-            resultsImageSum_[idx] += w * v;
-            resultsImageWmax_[idx] = std::max(resultsImageWmax_[idx], w);
+        const float v = static_cast<float>(pt.v);
+        for (int py = y0; py <= y1; ++py) {
+            const int dy = py - cy;
+            const int dy2 = dy * dy;
+            const int rowOffset = py * width;
+            for (int px = x0; px <= x1; ++px) {
+                const int dx = px - cx;
+                const int d2 = dx * dx + dy2;
+                if (d2 > r2) continue;
+                const float w = wByD2[d2];
+                const int idx = rowOffset + px;
+                resultsImageWsum_[idx] += w;
+                resultsImageSum_[idx] += w * v;
+                resultsImageWmax_[idx] = std::max(resultsImageWmax_[idx], w);
+            }
         }
     }
 
-    double minV = std::numeric_limits<double>::infinity();
-    double maxV = -std::numeric_limits<double>::infinity();
-    for (int idx = 0; idx < pixels; ++idx) {
-        const float wSum = resultsImageWsum_[idx];
-        if (wSum <= 0.0f) continue;
-        const double v = static_cast<double>(resultsImageSum_[idx]) / static_cast<double>(wSum);
-        if (!std::isfinite(v)) continue;
-        minV = std::min(minV, v);
-        maxV = std::max(maxV, v);
-    }
-    if (!std::isfinite(minV) || !std::isfinite(maxV)) {
-        resultsImageInfo_->setText("No finite pixel data found.");
-        resultsImageItem_->setPixmap(QPixmap());
-        return;
-    }
-
+    // ========================================================================
+    // Step 3: Colorize with boundary whitespace
+    // ========================================================================
+    // wMax ≈ exp(-d_min²/(2σ²)) gives coverage mask.
+    // Start fading to white at ~3σ, fully colored by ~2.5σ.
     constexpr double kFadeStartSigma = 3.0;
     constexpr double kFadeEndSigma = 2.5;
     const double fadeLo = std::exp(-0.5 * kFadeStartSigma * kFadeStartSigma);
@@ -1600,11 +1538,13 @@ void MainWindow::renderResultsImage() {
 
     const auto& lut = jetLikeLut();
     const QRgb white = qRgb(255, 255, 255);
-    const double invRangeV =
-        (std::isfinite(minV) && std::isfinite(maxV) && (maxV - minV) > 1e-12) ? (1.0 / (maxV - minV)) : 0.0;
+    const double invRangeV = (std::isfinite(minV) && std::isfinite(maxV) && (maxV - minV) > 1e-12)
+                                 ? (1.0 / (maxV - minV))
+                                 : 0.0;
 
     QImage img(width, height, QImage::Format_ARGB32);
     img.fill(Qt::white);
+
     for (int y = 0; y < height; ++y) {
         auto* dst = reinterpret_cast<QRgb*>(img.scanLine(y));
         const int row = y * width;
@@ -1615,15 +1555,21 @@ void MainWindow::renderResultsImage() {
                 dst[x] = white;
                 continue;
             }
+            const float wMax = resultsImageWmax_[idx];
+            if (wMax <= static_cast<float>(fadeLo)) {
+                dst[x] = white;
+                continue;
+            }
 
+            // Normalized field value
             const double v = static_cast<double>(resultsImageSum_[idx]) / static_cast<double>(wSum);
             double t = invRangeV > 0.0 ? ((v - minV) * invRangeV) : 0.5;
             t = std::clamp(t, 0.0, 1.0);
             const int li = std::clamp(static_cast<int>(std::lround(t * 255.0)), 0, 255);
             const QRgb c = lut[static_cast<size_t>(li)];
 
-            const double wMax = static_cast<double>(resultsImageWmax_[idx]);
-            const double alpha = smoothstep(fadeLo, fadeHi, wMax);
+            // Fade to white if coverage is low
+            const double alpha = smoothstep(fadeLo, fadeHi, static_cast<double>(wMax));
             dst[x] = lerpRgb(white, c, alpha);
         }
     }
@@ -1632,18 +1578,12 @@ void MainWindow::renderResultsImage() {
     resultsImageScene_->setSceneRect(QRectF(QPointF(0, 0), QSizeF(width, height)));
 
     const QString valueLabel = resultsImageValue_->currentText();
-    const QString sigmaNote = (sigmaRequested != sigmaPx)
-                                  ? QString(" (requested %1)").arg(sigmaRequested)
-                                  : QString();
     resultsImageInfo_->setText(
-        QString("%1 • points=%2 • unique(x,y)=%3 • img=%4×%5 • σ=%6px%7 • x=[%8,%9] y=[%10,%11] • %12=[%13,%14]")
+        QString("%1 • points=%2 • unique(x,y)=%3 • σ=%4px • x=[%5,%6] y=[%7,%8] • %9=[%10,%11] • Ctrl+wheel zoom")
             .arg(QFileInfo(resultsCurrentFile_).fileName())
             .arg(rawCount)
             .arg(uniqueCount)
-            .arg(width)
-            .arg(height)
             .arg(sigmaPx)
-            .arg(sigmaNote)
             .arg(minX, 0, 'g', 4)
             .arg(maxX, 0, 'g', 4)
             .arg(minY, 0, 'g', 4)

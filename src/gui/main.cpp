@@ -56,6 +56,10 @@ QTabWidget::pane {
   margin-top: -1px;
 }
 
+QTabWidget#mainTabs::pane {
+  background: #F5F7FB;
+}
+
 QTabBar::base {
   border: 0;
   background: #F5F7FB;
