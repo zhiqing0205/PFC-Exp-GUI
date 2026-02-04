@@ -509,7 +509,24 @@ jobs:
 
           DMG_ROOT="$(mktemp -d)"
           cp -R "stage/MID Nano.app" "${DMG_ROOT}/"
-          hdiutil create -volname "MID Nano" -srcfolder "${DMG_ROOT}" -ov -format UDZO "dist/${DMG}"
+
+          # hdiutil can sporadically fail with "Resource busy" on GitHub-hosted runners.
+          # Work around it by creating the DMG in a temp path and retrying a few times.
+          DMG_TMP="$(mktemp -t mid-nano.XXXXXX.dmg)"
+          rm -f "${DMG_TMP}"
+
+          for i in 1 2 3 4 5; do
+            echo "Creating DMG (attempt ${i})..."
+            if hdiutil create -volname "MID Nano" -srcfolder "${DMG_ROOT}" -ov -format UDZO "${DMG_TMP}"; then
+              break
+            fi
+            echo "hdiutil create failed (attempt ${i})."
+            hdiutil info || true
+            sleep 2
+          done
+
+          mkdir -p dist
+          mv -f "${DMG_TMP}" "dist/${DMG}"
           rm -rf "${DMG_ROOT}"
 
       - name: Upload artifact
