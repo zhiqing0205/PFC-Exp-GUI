@@ -1230,15 +1230,20 @@ void MainWindow::loadResultsFile(const QString& filePath) {
         }
     }
 
-    resultsTable_->setRowCount(rows.size());
+    const int totalRows = rows.size();
+    constexpr int kMaxTableRows = 8000;
+    const int displayRows = std::min(totalRows, kMaxTableRows);
+    resultsTable_->setUpdatesEnabled(false);
+    resultsTable_->setRowCount(displayRows);
     resultsTable_->setColumnCount(maxCols);
-    for (int r = 0; r < rows.size(); ++r) {
+    for (int r = 0; r < displayRows; ++r) {
         for (int c = 0; c < maxCols; ++c) {
             const double v = (c < rows[r].size()) ? rows[r][c] : nan;
             auto* item = new QTableWidgetItem(std::isfinite(v) ? QString::number(v, 'g', 12) : QString());
             resultsTable_->setItem(r, c, item);
         }
     }
+    resultsTable_->setUpdatesEnabled(true);
 
     auto colLabel = [&](int c) -> QString {
         if (maxCols <= 1) return "value";
@@ -1294,13 +1299,19 @@ void MainWindow::loadResultsFile(const QString& filePath) {
                 if (resultsViewTabs_->tabBar()) resultsViewTabs_->tabBar()->setTabVisible(plotTab, true);
             }
         }
-        resultsStatus_->setText(QString("%1 • %2 row(s) • %3 col(s) • use Plot tab").arg(name).arg(rows.size()).arg(maxCols));
+        const QString shownSuffix = (displayRows < totalRows) ? QString(" (showing %1)").arg(displayRows) : QString();
+        resultsStatus_->setText(
+            QString("%1 • %2 row(s)%3 • %4 col(s) • use Plot tab").arg(name).arg(totalRows).arg(shownSuffix).arg(maxCols));
         if (resultsPlotPage_) resultsViewTabs_->setCurrentWidget(resultsPlotPage_);
-        renderResultsImage();
+        QTimer::singleShot(0, this, [this, filePath]() {
+            if (resultsCurrentFile_ != filePath) return;
+            renderResultsImage();
+        });
         return;
     }
 
-    resultsStatus_->setText(QString("%1 • %2 row(s) • %3 col(s) • table only").arg(name).arg(rows.size()).arg(maxCols));
+    const QString shownSuffix = (displayRows < totalRows) ? QString(" (showing %1)").arg(displayRows) : QString();
+    resultsStatus_->setText(QString("%1 • %2 row(s)%3 • %4 col(s) • table only").arg(name).arg(totalRows).arg(shownSuffix).arg(maxCols));
     if (resultsViewTabs_->count() > 0) {
         const int plotTab = resultsPlotPage_ ? resultsViewTabs_->indexOf(resultsPlotPage_) : -1;
         const int tableTab = (plotTab == 0) ? 1 : 0;
@@ -1465,162 +1476,219 @@ void MainWindow::renderResultsImage() {
     QVector<Pt> points;
     points.reserve(dedup.size());
 
-    double minX = std::numeric_limits<double>::infinity();
-    double maxX = -std::numeric_limits<double>::infinity();
-    double minY = std::numeric_limits<double>::infinity();
-    double maxY = -std::numeric_limits<double>::infinity();
-    double minV = std::numeric_limits<double>::infinity();
-    double maxV = -std::numeric_limits<double>::infinity();
+    QHash<quint64, double> xVals;
+    QHash<quint64, double> yVals;
+    xVals.reserve(dedup.size());
+    yVals.reserve(dedup.size());
 
     for (auto it = dedup.constBegin(); it != dedup.constEnd(); ++it) {
         const Accum& a = it.value();
         if (a.count <= 0) continue;
         const double vAvg = a.sumV / static_cast<double>(a.count);
         points.push_back(Pt{a.x, a.y, vAvg});
-        minX = std::min(minX, a.x);
-        maxX = std::max(maxX, a.x);
-        minY = std::min(minY, a.y);
-        maxY = std::max(maxY, a.y);
-        minV = std::min(minV, vAvg);
-        maxV = std::max(maxV, vAvg);
+        xVals.insert(doubleBits(a.x), a.x);
+        yVals.insert(doubleBits(a.y), a.y);
     }
 
     const int uniqueCount = points.size();
-    if (uniqueCount <= 0 || !std::isfinite(minX) || !std::isfinite(maxX) || !std::isfinite(minY) || !std::isfinite(maxY)) {
+    if (uniqueCount <= 0) {
         resultsImageInfo_->setText("No finite point data found.");
         resultsImageItem_->setPixmap(QPixmap());
         return;
     }
 
-    const double rangeX = std::max(1e-12, maxX - minX);
-    const double rangeY = std::max(1e-12, maxY - minY);
-    const int longSide = 1024;
-    int width = longSide;
-    int height = longSide;
-    if (rangeX >= rangeY) {
-        height = std::max(1, static_cast<int>(std::lround(static_cast<double>(longSide) * (rangeY / rangeX))));
-    } else {
-        width = std::max(1, static_cast<int>(std::lround(static_cast<double>(longSide) * (rangeX / rangeY))));
+    QVector<double> xs;
+    xs.reserve(xVals.size());
+    for (auto it = xVals.constBegin(); it != xVals.constEnd(); ++it) xs.push_back(it.value());
+    QVector<double> ys;
+    ys.reserve(yVals.size());
+    for (auto it = yVals.constBegin(); it != yVals.constEnd(); ++it) ys.push_back(it.value());
+    std::sort(xs.begin(), xs.end());
+    std::sort(ys.begin(), ys.end());
+
+    const int gridW = xs.size();
+    const int gridH = ys.size();
+    if (gridW <= 0 || gridH <= 0) {
+        resultsImageInfo_->setText("Failed to build grid axes.");
+        resultsImageItem_->setPixmap(QPixmap());
+        return;
     }
-
-    // ========================================================================
-    // Step 2: Gaussian kernel interpolation
-    // ========================================================================
-    // Interpret "Smooth σ (px)" spinbox value as σ (Gaussian standard deviation).
-    // Use search radius R = 3σ for Gaussian kernel: w(d) = exp(-d²/(2σ²))
-    const int sigmaPx = std::clamp(resultsImagePointSize_->value(), 1, 64);
-    const int radiusPx = sigmaPx * 3;  // Search radius R = 3σ
-    const int r2 = radiusPx * radiusPx;
-    const double sigma = std::max(1e-6, static_cast<double>(sigmaPx));
-    const double invTwoSigma2 = 1.0 / (2.0 * sigma * sigma);
-
-    // Pre-compute Gaussian weights by squared distance
-    QVector<float> wByD2(r2 + 1, 0.0f);
-    for (int d2 = 0; d2 <= r2; ++d2) {
-        wByD2[d2] = static_cast<float>(std::exp(-static_cast<double>(d2) * invTwoSigma2));
+    const long long gridPixelsLL = 1LL * gridW * gridH;
+    if (gridPixelsLL > 8LL * 1024LL * 1024LL) {
+        resultsImageInfo_->setText(QString("Grid too large to render: %1×%2").arg(gridW).arg(gridH));
+        resultsImageItem_->setPixmap(QPixmap());
+        return;
     }
+    const int gridPixels = static_cast<int>(gridPixelsLL);
 
-    // Reuse buffers if possible
-    const int pixels = width * height;
-    const QSize newSize(width, height);
-    if (resultsImageBufferSize_ != newSize) {
-        resultsImageBufferSize_ = newSize;
-        resultsImageSum_.resize(pixels);
-        resultsImageWsum_.resize(pixels);
-        resultsImageWmax_.resize(pixels);
-    }
-    // Clear buffers
-    std::fill(resultsImageSum_.begin(), resultsImageSum_.end(), 0.0f);
-    std::fill(resultsImageWsum_.begin(), resultsImageWsum_.end(), 0.0f);
-    std::fill(resultsImageWmax_.begin(), resultsImageWmax_.end(), 0.0f);
+    QHash<quint64, int> xIndex;
+    xIndex.reserve(gridW * 2);
+    for (int i = 0; i < gridW; ++i) xIndex.insert(doubleBits(xs[i]), i);
+    QHash<quint64, int> yIndex;
+    yIndex.reserve(gridH * 2);
+    for (int i = 0; i < gridH; ++i) yIndex.insert(doubleBits(ys[i]), i);
 
-    const double sx = (width - 1) / rangeX;
-    const double sy = (height - 1) / rangeY;
-
-    // Splat each point into its neighborhood
+    QVector<float> field(gridPixels, 0.0f);
+    QVector<float> mask(gridPixels, 0.0f);
     for (const Pt& pt : points) {
-        const int cx = std::clamp(static_cast<int>(std::lround((pt.x - minX) * sx)), 0, width - 1);
-        const int cy = std::clamp(static_cast<int>(std::lround((maxY - pt.y) * sy)), 0, height - 1);
-        const int x0 = std::max(0, cx - radiusPx);
-        const int x1 = std::min(width - 1, cx + radiusPx);
-        const int y0 = std::max(0, cy - radiusPx);
-        const int y1 = std::min(height - 1, cy + radiusPx);
+        const int xi = xIndex.value(doubleBits(pt.x), -1);
+        const int yi = yIndex.value(doubleBits(pt.y), -1);
+        if (xi < 0 || yi < 0) continue;
+        const int yInv = (gridH - 1) - yi;  // keep y+ upward
+        const int idx = yInv * gridW + xi;
+        field[idx] += static_cast<float>(pt.v);
+        mask[idx] += 1.0f;
+    }
+    for (int idx = 0; idx < gridPixels; ++idx) {
+        if (mask[idx] > 0.0f) {
+            field[idx] /= mask[idx];
+            mask[idx] = 1.0f;
+        } else {
+            field[idx] = std::numeric_limits<float>::quiet_NaN();
+            mask[idx] = 0.0f;
+        }
+    }
 
-        const float v = static_cast<float>(pt.v);
-        for (int py = y0; py <= y1; ++py) {
-            const int dy = py - cy;
-            const int dy2 = dy * dy;
-            const int rowOffset = py * width;
-            for (int px = x0; px <= x1; ++px) {
-                const int dx = px - cx;
-                const int d2 = dx * dx + dy2;
-                if (d2 > r2) continue;
-                const float w = wByD2[d2];
-                const int idx = rowOffset + px;
-                resultsImageWsum_[idx] += w;
-                resultsImageSum_[idx] += w * v;
-                resultsImageWmax_[idx] = std::max(resultsImageWmax_[idx], w);
+    const int sigmaPx = std::clamp(resultsImagePointSize_->value(), 1, 64);
+    if (sigmaPx > 1) {
+        const double sigma = static_cast<double>(sigmaPx);
+        const int radius = std::max(1, static_cast<int>(std::ceil(3.0 * sigma)));
+        QVector<float> kernel(2 * radius + 1);
+        double kSum = 0.0;
+        for (int i = -radius; i <= radius; ++i) {
+            const double w = std::exp(-(static_cast<double>(i * i)) / (2.0 * sigma * sigma));
+            kernel[i + radius] = static_cast<float>(w);
+            kSum += w;
+        }
+        for (float& w : kernel) w = static_cast<float>(static_cast<double>(w) / std::max(1e-12, kSum));
+
+        auto blurSeparable = [&](const QVector<float>& src, QVector<float>& dst) {
+            QVector<float> tmp(gridPixels, 0.0f);
+            dst.resize(gridPixels);
+
+            // Horizontal
+            for (int y = 0; y < gridH; ++y) {
+                const int row = y * gridW;
+                for (int x = 0; x < gridW; ++x) {
+                    double acc = 0.0;
+                    for (int k = -radius; k <= radius; ++k) {
+                        const int xx = std::clamp(x + k, 0, gridW - 1);
+                        acc += static_cast<double>(src[row + xx]) * static_cast<double>(kernel[k + radius]);
+                    }
+                    tmp[row + x] = static_cast<float>(acc);
+                }
+            }
+
+            // Vertical
+            for (int y = 0; y < gridH; ++y) {
+                for (int x = 0; x < gridW; ++x) {
+                    double acc = 0.0;
+                    for (int k = -radius; k <= radius; ++k) {
+                        const int yy = std::clamp(y + k, 0, gridH - 1);
+                        acc += static_cast<double>(tmp[yy * gridW + x]) * static_cast<double>(kernel[k + radius]);
+                    }
+                    dst[y * gridW + x] = static_cast<float>(acc);
+                }
+            }
+        };
+
+        QVector<float> vMasked(gridPixels, 0.0f);
+        for (int idx = 0; idx < gridPixels; ++idx) {
+            const float m = mask[idx];
+            vMasked[idx] = std::isfinite(field[idx]) ? (field[idx] * m) : 0.0f;
+        }
+
+        QVector<float> vBlur;
+        QVector<float> mBlur;
+        blurSeparable(vMasked, vBlur);
+        blurSeparable(mask, mBlur);
+
+        constexpr float kMaskEps = 1e-4f;
+        for (int idx = 0; idx < gridPixels; ++idx) {
+            mask[idx] = mBlur[idx];
+            if (mask[idx] > kMaskEps) {
+                field[idx] = vBlur[idx] / mask[idx];
+            } else {
+                field[idx] = std::numeric_limits<float>::quiet_NaN();
+                mask[idx] = 0.0f;
             }
         }
     }
 
-    // ========================================================================
-    // Step 3: Colorize with boundary whitespace
-    // ========================================================================
-    // wMax ≈ exp(-d_min²/(2σ²)) gives coverage mask.
-    // Start fading to white at ~3σ, fully colored by ~2.5σ.
-    constexpr double kFadeStartSigma = 3.0;
-    constexpr double kFadeEndSigma = 2.5;
-    const double fadeLo = std::exp(-0.5 * kFadeStartSigma * kFadeStartSigma);
-    const double fadeHi = std::exp(-0.5 * kFadeEndSigma * kFadeEndSigma);
+    double minV = std::numeric_limits<double>::infinity();
+    double maxV = -std::numeric_limits<double>::infinity();
+    for (int idx = 0; idx < gridPixels; ++idx) {
+        if (mask[idx] <= 0.0f) continue;
+        const float v = field[idx];
+        if (!std::isfinite(v)) continue;
+        minV = std::min(minV, static_cast<double>(v));
+        maxV = std::max(maxV, static_cast<double>(v));
+    }
+    if (!std::isfinite(minV) || !std::isfinite(maxV)) {
+        resultsImageInfo_->setText("No finite data found after filtering.");
+        resultsImageItem_->setPixmap(QPixmap());
+        return;
+    }
 
     const auto& lut = jetLikeLut();
     const QRgb white = qRgb(255, 255, 255);
-    const double invRangeV = (std::isfinite(minV) && std::isfinite(maxV) && (maxV - minV) > 1e-12)
-                                 ? (1.0 / (maxV - minV))
-                                 : 0.0;
+    const double invRangeV = (maxV - minV) > 1e-12 ? (1.0 / (maxV - minV)) : 0.0;
 
-    QImage img(width, height, QImage::Format_ARGB32);
+    QImage img(gridW, gridH, QImage::Format_ARGB32);
     img.fill(Qt::white);
-
-    for (int y = 0; y < height; ++y) {
+    for (int y = 0; y < gridH; ++y) {
         auto* dst = reinterpret_cast<QRgb*>(img.scanLine(y));
-        const int row = y * width;
-        for (int x = 0; x < width; ++x) {
+        const int row = y * gridW;
+        for (int x = 0; x < gridW; ++x) {
             const int idx = row + x;
-            const float wSum = resultsImageWsum_[idx];
-            if (wSum <= 0.0f) {
-                dst[x] = white;
-                continue;
-            }
-            const float wMax = resultsImageWmax_[idx];
-            if (wMax <= static_cast<float>(fadeLo)) {
+            const float m = mask[idx];
+            const float v = field[idx];
+            if (m <= 0.0f || !std::isfinite(v)) {
                 dst[x] = white;
                 continue;
             }
 
-            // Normalized field value
-            const double v = static_cast<double>(resultsImageSum_[idx]) / static_cast<double>(wSum);
-            double t = invRangeV > 0.0 ? ((v - minV) * invRangeV) : 0.5;
+            double t = invRangeV > 0.0 ? ((static_cast<double>(v) - minV) * invRangeV) : 0.5;
             t = std::clamp(t, 0.0, 1.0);
             const int li = std::clamp(static_cast<int>(std::lround(t * 255.0)), 0, 255);
             const QRgb c = lut[static_cast<size_t>(li)];
 
-            // Fade to white if coverage is low
-            const double alpha = smoothstep(fadeLo, fadeHi, static_cast<double>(wMax));
+            // Fade to white near sparse boundaries (use mask in [0,1] after blur).
+            const double alpha = smoothstep(0.05, 0.25, std::clamp(static_cast<double>(m), 0.0, 1.0));
             dst[x] = lerpRgb(white, c, alpha);
         }
     }
 
-    resultsImageItem_->setPixmap(QPixmap::fromImage(img));
-    resultsImageScene_->setSceneRect(QRectF(QPointF(0, 0), QSizeF(width, height)));
+    // Scale up for nicer viewing while keeping aspect ratio.
+    int outW = gridW;
+    int outH = gridH;
+    const int longSide = 1024;
+    if (std::max(gridW, gridH) < longSide) {
+        if (gridW >= gridH) {
+            outW = longSide;
+            outH = std::max(1, static_cast<int>(std::lround(static_cast<double>(longSide) * (static_cast<double>(gridH) / static_cast<double>(gridW)))));
+        } else {
+            outH = longSide;
+            outW = std::max(1, static_cast<int>(std::lround(static_cast<double>(longSide) * (static_cast<double>(gridW) / static_cast<double>(gridH)))));
+        }
+    }
+    QImage outImg = (outW != gridW || outH != gridH) ? img.scaled(outW, outH, Qt::IgnoreAspectRatio, Qt::SmoothTransformation) : img;
+
+    resultsImageItem_->setPixmap(QPixmap::fromImage(outImg));
+    resultsImageScene_->setSceneRect(QRectF(QPointF(0, 0), QSizeF(outImg.width(), outImg.height())));
 
     const QString valueLabel = resultsImageValue_->currentText();
+    const double minX = xs.isEmpty() ? 0.0 : xs.front();
+    const double maxX = xs.isEmpty() ? 0.0 : xs.back();
+    const double minY = ys.isEmpty() ? 0.0 : ys.front();
+    const double maxY = ys.isEmpty() ? 0.0 : ys.back();
     resultsImageInfo_->setText(
-        QString("%1 • points=%2 • unique(x,y)=%3 • σ=%4px • x=[%5,%6] y=[%7,%8] • %9=[%10,%11] • Ctrl+wheel zoom")
+        QString("%1 • points=%2 • unique(x,y)=%3 • grid=%4×%5 • σ=%6px • x=[%7,%8] y=[%9,%10] • %11=[%12,%13] • wheel zoom, drag to pan")
             .arg(QFileInfo(resultsCurrentFile_).fileName())
             .arg(rawCount)
             .arg(uniqueCount)
+            .arg(gridW)
+            .arg(gridH)
             .arg(sigmaPx)
             .arg(minX, 0, 'g', 4)
             .arg(maxX, 0, 'g', 4)
