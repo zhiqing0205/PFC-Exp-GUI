@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include <QAction>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QCoreApplication>
@@ -26,6 +27,8 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QMenu>
+#include <QMenuBar>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPlainTextEdit>
@@ -112,6 +115,17 @@ static QString pickExistingDirectory(QWidget* parent, const QString& caption, co
     return selected.first();
 }
 
+static QString pickExistingFile(QWidget* parent, const QString& caption, const QString& baseDir, const QString& nameFilter) {
+    QFileDialog dlg(parent, caption, baseDir);
+    dlg.setFileMode(QFileDialog::ExistingFile);
+    if (!nameFilter.trimmed().isEmpty()) dlg.setNameFilter(nameFilter);
+    dlg.setOption(QFileDialog::DontUseNativeDialog, true);
+    if (dlg.exec() != QDialog::Accepted) return QString();
+    const QStringList selected = dlg.selectedFiles();
+    if (selected.isEmpty()) return QString();
+    return selected.first();
+}
+
 static QString pickSavePngFile(QWidget* parent, const QString& caption, const QString& suggestedPath) {
     QFileDialog dlg(parent, caption, suggestedPath);
     dlg.setAcceptMode(QFileDialog::AcceptSave);
@@ -170,13 +184,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("MID Nano");
     resize(1100, 920);
 
-    auto* uploadLicenseBtn = new QPushButton("Upload License…");
-    uploadLicenseBtn->setObjectName("tabUploadLicense");
-    uploadLicenseBtn->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
-    auto* aboutBtn = new QPushButton("About");
-    aboutBtn->setObjectName("tabAbout");
-    aboutBtn->setIcon(style()->standardIcon(QStyle::SP_MessageBoxInformation));
-
     auto* tabs = new QTabWidget;
     tabs->setObjectName("mainTabs");
     tabs->setDocumentMode(true);
@@ -184,17 +191,17 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     tabs->tabBar()->setDrawBase(false);
     tabs->tabBar()->setExpanding(false);
 
-    auto* tabActions = new QWidget;
-    tabActions->setObjectName("mainTabsActions");
-    tabActions->setAttribute(Qt::WA_StyledBackground, true);
-    auto* tabActionsLayout = new QHBoxLayout;
-    tabActionsLayout->setContentsMargins(8, 4, 8, 4);
-    tabActionsLayout->setSpacing(6);
-    tabActionsLayout->setAlignment(Qt::AlignVCenter);
-    tabActionsLayout->addWidget(uploadLicenseBtn);
-    tabActionsLayout->addWidget(aboutBtn);
-    tabActions->setLayout(tabActionsLayout);
-    tabs->setCornerWidget(tabActions, Qt::TopRightCorner);
+    // Menu actions (macOS will place About in the app menu automatically).
+    auto* helpMenu = menuBar()->addMenu("&Help");
+    auto* uploadLicenseAction = helpMenu->addAction("Upload License…");
+    uploadLicenseAction->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
+    connect(uploadLicenseAction, &QAction::triggered, this, &MainWindow::uploadLicense);
+
+    helpMenu->addSeparator();
+    auto* aboutAction = helpMenu->addAction("About");
+    aboutAction->setIcon(style()->standardIcon(QStyle::SP_MessageBoxInformation));
+    aboutAction->setMenuRole(QAction::AboutRole);
+    connect(aboutAction, &QAction::triggered, this, &MainWindow::showAboutDialog);
 
     auto* expTab = new QWidget;
     auto* resultsTab = new QWidget;
@@ -298,9 +305,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         logDialog_->raise();
         logDialog_->activateWindow();
     });
-
-    connect(aboutBtn, &QPushButton::clicked, this, &MainWindow::showAboutDialog);
-    connect(uploadLicenseBtn, &QPushButton::clicked, this, &MainWindow::uploadLicense);
 
     // ---------- Experiment tab ----------
     auto* expLayout = new QVBoxLayout;
@@ -694,7 +698,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resultsViewTabs_->addTab(tablePage, "Table");
     const int plotTab = resultsViewTabs_->indexOf(plotPage);
     resultsViewTabs_->setTabEnabled(plotTab, false);
-    if (resultsViewTabs_->tabBar()) resultsViewTabs_->tabBar()->setTabVisible(plotTab, false);
     resultsViewTabs_->setCurrentWidget(tablePage);
 
     resultsSplit->addWidget(filesBox);
@@ -882,7 +885,6 @@ void MainWindow::resetResultsViewState() {
         const int plotTab = resultsViewTabs_->indexOf(resultsPlotPage_);
         if (plotTab >= 0) {
             resultsViewTabs_->setTabEnabled(plotTab, false);
-            if (resultsViewTabs_->tabBar()) resultsViewTabs_->tabBar()->setTabVisible(plotTab, false);
         }
     }
     if (resultsViewTabs_->count() > 0) {
@@ -941,14 +943,20 @@ void MainWindow::refreshResultsFileList() {
 
     resultsStatus_->setText(QString("Found %1 .txt file(s). Select one to inspect.").arg(files.size()));
 
+    QListWidgetItem* target = nullptr;
     if (!prev.isEmpty()) {
         const QList<QListWidgetItem*> matches = resultsFiles_->findItems(prev, Qt::MatchExactly);
-        if (!matches.isEmpty()) {
-            resultsFiles_->setCurrentItem(matches.first());
-            return;
-        }
+        if (!matches.isEmpty()) target = matches.first();
     }
-    resultsFiles_->setCurrentRow(0);
+    if (!target && resultsFiles_->count() > 0) target = resultsFiles_->item(0);
+
+    if (!target) return;
+    {
+        QSignalBlocker blocker(resultsFiles_);
+        resultsFiles_->setCurrentItem(target);
+    }
+
+    loadResultsFile(dir.filePath(target->text()));
 }
 
 static QVector<double> extractNumbersFromLine(const QString& line) {
@@ -967,6 +975,8 @@ static QVector<double> extractNumbersFromLine(const QString& line) {
 void MainWindow::loadResultsFile(const QString& filePath) {
     if (!resultsStatus_ || !resultsViewTabs_ || !resultsTable_) return;
 
+    appendLog("=== Visualizer: Load file: " + filePath + " ===");
+
     resultsCurrentFile_ = filePath;
     resultsImageEnabled_ = false;
     resultsColumns_.clear();
@@ -981,7 +991,6 @@ void MainWindow::loadResultsFile(const QString& filePath) {
         const int plotTab = resultsViewTabs_->indexOf(resultsPlotPage_);
         if (plotTab >= 0) {
             resultsViewTabs_->setTabEnabled(plotTab, false);
-            if (resultsViewTabs_->tabBar()) resultsViewTabs_->tabBar()->setTabVisible(plotTab, false);
         }
     }
     if (resultsViewTabs_->count() > 0) {
@@ -1006,6 +1015,7 @@ void MainWindow::loadResultsFile(const QString& filePath) {
     QFile f(filePath);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
         resultsStatus_->setText("Failed to open: " + filePath);
+        appendLog("=== Visualizer: Failed to open file ===");
         return;
     }
 
@@ -1181,6 +1191,7 @@ void MainWindow::loadResultsFile(const QString& filePath) {
 
     if (rows.isEmpty() || maxCols <= 0) {
         resultsStatus_->setText("No numeric data found in: " + name);
+        appendLog("=== Visualizer: No numeric data found ===");
         return;
     }
 
@@ -1192,15 +1203,23 @@ void MainWindow::loadResultsFile(const QString& filePath) {
         }
     }
 
-    resultsTable_->setRowCount(rows.size());
+    constexpr int kMaxTableRowsDefault = 20000;
+    constexpr int kMaxTableRowsSnapshot = 5000;
+    const int maxTableRows = isPhimaxSnapshot ? kMaxTableRowsSnapshot : kMaxTableRowsDefault;
+    const int displayRows = std::min(static_cast<int>(rows.size()), maxTableRows);
+
+    resultsTable_->setSortingEnabled(false);
+    resultsTable_->setUpdatesEnabled(false);
+    resultsTable_->setRowCount(displayRows);
     resultsTable_->setColumnCount(maxCols);
-    for (int r = 0; r < rows.size(); ++r) {
+    for (int r = 0; r < displayRows; ++r) {
         for (int c = 0; c < maxCols; ++c) {
             const double v = (c < rows[r].size()) ? rows[r][c] : nan;
             auto* item = new QTableWidgetItem(std::isfinite(v) ? QString::number(v, 'g', 12) : QString());
             resultsTable_->setItem(r, c, item);
         }
     }
+    resultsTable_->setUpdatesEnabled(true);
 
     auto colLabel = [&](int c) -> QString {
         if (maxCols <= 1) return "value";
@@ -1253,16 +1272,21 @@ void MainWindow::loadResultsFile(const QString& filePath) {
             const int plotTab = resultsViewTabs_->indexOf(resultsPlotPage_);
             if (plotTab >= 0) {
                 resultsViewTabs_->setTabEnabled(plotTab, true);
-                if (resultsViewTabs_->tabBar()) resultsViewTabs_->tabBar()->setTabVisible(plotTab, true);
             }
         }
-        resultsStatus_->setText(QString("%1 • %2 row(s) • %3 col(s) • use Plot tab").arg(name).arg(rows.size()).arg(maxCols));
+        const QString shown = (displayRows == rows.size()) ? QString::number(displayRows)
+                                                           : QString("%1/%2").arg(displayRows).arg(rows.size());
+        resultsStatus_->setText(QString("%1 • %2 row(s) • %3 col(s) • use Plot tab").arg(name).arg(shown).arg(maxCols));
         if (resultsPlotPage_) resultsViewTabs_->setCurrentWidget(resultsPlotPage_);
         renderResultsImage();
         return;
     }
 
-    resultsStatus_->setText(QString("%1 • %2 row(s) • %3 col(s) • table only").arg(name).arg(rows.size()).arg(maxCols));
+    {
+        const QString shown = (displayRows == rows.size()) ? QString::number(displayRows)
+                                                           : QString("%1/%2").arg(displayRows).arg(rows.size());
+        resultsStatus_->setText(QString("%1 • %2 row(s) • %3 col(s) • table only").arg(name).arg(shown).arg(maxCols));
+    }
     if (resultsViewTabs_->count() > 0) {
         const int plotTab = resultsPlotPage_ ? resultsViewTabs_->indexOf(resultsPlotPage_) : -1;
         const int tableTab = (plotTab == 0) ? 1 : 0;
@@ -2319,7 +2343,9 @@ void MainWindow::showAboutDialog() {
 }
 
 void MainWindow::uploadLicense() {
-    const QString selected = QFileDialog::getOpenFileName(
+    appendLog("=== License: upload clicked ===");
+
+    const QString selected = pickExistingFile(
         this,
         "Select license file",
         QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation),

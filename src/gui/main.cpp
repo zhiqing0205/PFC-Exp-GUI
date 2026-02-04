@@ -65,16 +65,6 @@ QTabBar::base {
   background: #F5F7FB;
 }
 
-QTabWidget#mainTabs::right-corner, QTabWidget#mainTabs::left-corner {
-  background: #F5F7FB;
-  border: 0px;
-}
-QWidget#mainTabsActions {
-  background: #F5F7FB;
-  border: 1px solid #D8DEE9;
-  border-radius: 12px;
-}
-
 QTabBar::tab {
   background: #EEF2F7;
   border: 1px solid #D8DEE9;
@@ -317,24 +307,6 @@ QToolButton:hover, QPushButton:hover {
 }
 QToolButton:pressed, QPushButton:pressed {
   background: #D1D5DB;
-}
-
-QWidget#mainTabsActions QPushButton#tabUploadLicense,
-QWidget#mainTabsActions QPushButton#tabAbout {
-  background: #FFFFFF;
-  border: 1px solid #CBD5E1;
-  border-radius: 10px;
-  padding: 6px 12px;
-}
-QWidget#mainTabsActions QPushButton#tabUploadLicense:hover,
-QWidget#mainTabsActions QPushButton#tabAbout:hover {
-  background: #E5E7EB;
-  border-color: #CBD5E1;
-}
-QWidget#mainTabsActions QPushButton#tabUploadLicense:pressed,
-QWidget#mainTabsActions QPushButton#tabAbout:pressed {
-  background: #D1D5DB;
-  border-color: #CBD5E1;
 }
 
 QPushButton[primary="true"] {
