@@ -2231,9 +2231,9 @@ void MainWindow::showAboutDialog() {
     const QString appName = QCoreApplication::applicationName().isEmpty() ? QString("MID Nano") : QCoreApplication::applicationName();
     const QString version = QCoreApplication::applicationVersion().isEmpty() ? QString("dev") : QCoreApplication::applicationVersion();
 
-    static const QString githubUrl = "https://github.com/zhiqing0205/PFC-Exp-GUI";
-    static const QString giteeUrl = "https://gitee.com/zhiqing0205/PFC-Exp-GUI";
-    static const QString author = "zhiqing0205";
+    static const QString githubUrl = "https://github.com/ziuch/MIDNano";
+    static const QString giteeUrl = "https://gitee.com/Huiichen/midnano";
+    static const QString author = "Chen Hui";
 
     QDialog dlg(this);
     dlg.setWindowTitle("About " + appName);
