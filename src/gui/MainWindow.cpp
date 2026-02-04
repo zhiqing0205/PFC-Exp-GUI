@@ -166,7 +166,7 @@ protected:
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("MID Nano");
-    resize(1100, 840);
+    resize(1100, 920);
 
     auto* uploadLicenseBtn = new QPushButton("Upload License…");
     uploadLicenseBtn->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
