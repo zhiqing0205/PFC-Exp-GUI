@@ -58,7 +58,7 @@ QTabWidget::pane {
 
 QTabBar::base {
   border: 0;
-  background: transparent;
+  background: #F5F7FB;
 }
 
 QTabWidget#mainTabs::right-corner, QTabWidget#mainTabs::left-corner {
@@ -67,6 +67,8 @@ QTabWidget#mainTabs::right-corner, QTabWidget#mainTabs::left-corner {
 }
 QWidget#mainTabsActions {
   background: #F5F7FB;
+  border: 1px solid #D8DEE9;
+  border-radius: 12px;
 }
 
 QTabBar::tab {
@@ -315,8 +317,8 @@ QToolButton:pressed, QPushButton:pressed {
 
 QWidget#mainTabsActions QPushButton#tabUploadLicense,
 QWidget#mainTabsActions QPushButton#tabAbout {
-  background: #EEF2F7;
-  border: 1px solid #D8DEE9;
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
   border-radius: 10px;
   padding: 6px 12px;
 }
