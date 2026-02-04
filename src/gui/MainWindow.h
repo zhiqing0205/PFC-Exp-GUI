@@ -23,6 +23,7 @@ class QStackedWidget;
 class QTabWidget;
 class QTableWidget;
 class QToolButton;
+class QTimer;
 
 struct RunParams {
     double u0 = 0.05;
@@ -84,6 +85,7 @@ private:
     void setResultsDir(const QString& dirPath);
     void refreshResultsFileList();
     void loadResultsFile(const QString& filePath);
+    void resetResultsViewState();
     void renderResultsImage();
     void fitResultsImage();
     void exportResultsImage();
@@ -153,6 +155,7 @@ private:
     QString resultsCurrentFile_;
     bool resultsImageEnabled_ = false;
     QVector<QVector<double>> resultsColumns_;
+    QTimer* resultsRefreshTimer_ = nullptr;
 
     // Heatmap rendering buffers (reusable to avoid frequent allocations)
     QSize resultsImageBufferSize_;

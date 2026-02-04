@@ -34,6 +34,7 @@
 #include <QRegularExpression>
 #include <QTextStream>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QSplitter>
 #include <QSpinBox>
 #include <QStackedWidget>
@@ -43,6 +44,8 @@
 #include <QSysInfo>
 #include <QTabBar>
 #include <QTabWidget>
+#include <QSignalBlocker>
+#include <QTimer>
 #include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -740,6 +743,18 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         exportResultsImage();
     });
 
+    resultsRefreshTimer_ = new QTimer(this);
+    resultsRefreshTimer_->setInterval(3000);
+    connect(resultsRefreshTimer_, &QTimer::timeout, this, [this]() {
+        if (!resultsDir_) return;
+        const QString dirPath = resultsDir_->text().trimmed();
+        if (dirPath.isEmpty()) return;
+        QDir dir(dirPath);
+        if (!dir.exists()) return;
+        refreshResultsFileList();
+    });
+    resultsRefreshTimer_->start();
+
     // ---------- Roadmap tabs (placeholders) ----------
     auto setupRoadmapTab = [](QWidget* tab, const QString& title, const QString& desc, const QStringList& bullets) {
         auto* layout = new QVBoxLayout;
@@ -856,22 +871,26 @@ QString MainWindow::formatRunLabel(int index, int total) const {
 
 void MainWindow::setResultsDir(const QString& dirPath) {
     if (!resultsDir_) return;
+    const QString prev = resultsDir_->text().trimmed();
     resultsDir_->setText(dirPath);
+    if (dirPath.trimmed() != prev) {
+        resetResultsViewState();
+        if (resultsFiles_) resultsFiles_->clear();
+    }
     refreshResultsFileList();
 }
 
-void MainWindow::refreshResultsFileList() {
-    if (!resultsDir_ || !resultsStatus_ || !resultsFiles_ || !resultsViewTabs_ || !resultsTable_) return;
+void MainWindow::resetResultsViewState() {
+    if (!resultsStatus_ || !resultsViewTabs_ || !resultsTable_) return;
 
-    const QString prev = resultsFiles_->currentItem() ? resultsFiles_->currentItem()->text() : QString();
-
-    resultsFiles_->clear();
     resultsCurrentFile_.clear();
     resultsImageEnabled_ = false;
     resultsColumns_.clear();
+
     resultsTable_->clear();
     resultsTable_->setRowCount(0);
     resultsTable_->setColumnCount(0);
+
     if (resultsPlotPage_) {
         const int plotTab = resultsViewTabs_->indexOf(resultsPlotPage_);
         if (plotTab >= 0) {
@@ -900,40 +919,75 @@ void MainWindow::refreshResultsFileList() {
     if (resultsImageView_) {
         resultsImageView_->resetTransform();
     }
+}
+
+void MainWindow::refreshResultsFileList() {
+    if (!resultsDir_ || !resultsStatus_ || !resultsFiles_ || !resultsViewTabs_ || !resultsTable_) return;
 
     const QString dirPath = resultsDir_->text().trimmed();
     if (dirPath.isEmpty()) {
         resultsStatus_->setText("Run directory is empty.");
+        resultsFiles_->clear();
+        resetResultsViewState();
         return;
     }
     QDir dir(dirPath);
     if (!dir.exists()) {
         resultsStatus_->setText("Directory not found: " + dirPath);
+        resultsFiles_->clear();
+        resetResultsViewState();
         return;
     }
 
     const QStringList files = dir.entryList(QStringList() << "*.txt", QDir::Files, QDir::Name);
     if (files.isEmpty()) {
         resultsStatus_->setText("No .txt files found in: " + dirPath);
+        resultsFiles_->clear();
+        resetResultsViewState();
         return;
     }
 
-    for (const QString& file : files) {
-        auto* item = new QListWidgetItem(file);
-        item->setToolTip(dir.filePath(file));
-        resultsFiles_->addItem(item);
+    const QString prevSelected = resultsFiles_->currentItem() ? resultsFiles_->currentItem()->text() : QString();
+    const QString loadedName = resultsCurrentFile_.isEmpty() ? QString() : QFileInfo(resultsCurrentFile_).fileName();
+    const int prevScroll = resultsFiles_->verticalScrollBar() ? resultsFiles_->verticalScrollBar()->value() : 0;
+
+    {
+        QSignalBlocker blocker(resultsFiles_);
+        resultsFiles_->clear();
+        resultsFiles_->setUpdatesEnabled(false);
+        for (const QString& file : files) {
+            auto* item = new QListWidgetItem(file);
+            item->setToolTip(dir.filePath(file));
+            resultsFiles_->addItem(item);
+        }
+        resultsFiles_->setUpdatesEnabled(true);
+
+        QString desired = prevSelected;
+        if (desired.isEmpty()) desired = loadedName;
+
+        if (!desired.isEmpty()) {
+            const QList<QListWidgetItem*> matches = resultsFiles_->findItems(desired, Qt::MatchExactly);
+            if (!matches.isEmpty()) {
+                resultsFiles_->setCurrentItem(matches.first());
+            }
+        }
+        if (!resultsFiles_->currentItem() && resultsFiles_->count() > 0) {
+            resultsFiles_->setCurrentRow(0);
+        }
+        if (resultsFiles_->verticalScrollBar()) resultsFiles_->verticalScrollBar()->setValue(prevScroll);
     }
 
     resultsStatus_->setText(QString("Found %1 .txt file(s). Select one to inspect.").arg(files.size()));
 
-    if (!prev.isEmpty()) {
-        const QList<QListWidgetItem*> matches = resultsFiles_->findItems(prev, Qt::MatchExactly);
-        if (!matches.isEmpty()) {
-            resultsFiles_->setCurrentItem(matches.first());
-            return;
-        }
+    const QString selectedNow = resultsFiles_->currentItem() ? resultsFiles_->currentItem()->text() : QString();
+    if (selectedNow.trimmed().isEmpty()) {
+        resetResultsViewState();
+        return;
     }
-    resultsFiles_->setCurrentRow(0);
+
+    if (loadedName != selectedNow || resultsCurrentFile_.isEmpty()) {
+        loadResultsFile(dir.filePath(selectedNow));
+    }
 }
 
 static QVector<double> extractNumbersFromLine(const QString& line) {
