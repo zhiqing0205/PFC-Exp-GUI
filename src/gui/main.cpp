@@ -310,6 +310,20 @@ QToolButton:pressed, QPushButton:pressed {
   background: #D1D5DB;
 }
 
+QPushButton#tabUploadLicense, QPushButton#tabAbout {
+  background: transparent;
+  border: 0px;
+  padding: 6px 10px;
+}
+QPushButton#tabUploadLicense:hover, QPushButton#tabAbout:hover {
+  background: #E5E7EB;
+  border: 0px;
+}
+QPushButton#tabUploadLicense:pressed, QPushButton#tabAbout:pressed {
+  background: #D1D5DB;
+  border: 0px;
+}
+
 QPushButton[primary="true"] {
   background: #2563EB;
   border-color: #2563EB;
@@ -354,7 +368,11 @@ QListWidget::item {
   border-radius: 10px;
 }
 QListWidget::item:selected {
-  background: #DBEAFE;
+  background: #2563EB;
+  color: #FFFFFF;
+}
+QListWidget::item:selected:hover {
+  background: #1D4ED8;
 }
 
 QTableView {

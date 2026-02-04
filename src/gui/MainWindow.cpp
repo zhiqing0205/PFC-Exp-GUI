@@ -169,8 +169,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resize(1100, 920);
 
     auto* uploadLicenseBtn = new QPushButton("Upload License…");
+    uploadLicenseBtn->setObjectName("tabUploadLicense");
     uploadLicenseBtn->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
     auto* aboutBtn = new QPushButton("About");
+    aboutBtn->setObjectName("tabAbout");
     aboutBtn->setIcon(style()->standardIcon(QStyle::SP_MessageBoxInformation));
 
     auto* tabs = new QTabWidget;
@@ -185,9 +187,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* tabActionsLayout = new QHBoxLayout;
     tabActionsLayout->setContentsMargins(0, 0, 0, 0);
     tabActionsLayout->setSpacing(10);
+    tabActionsLayout->setAlignment(Qt::AlignVCenter);
     tabActionsLayout->addWidget(uploadLicenseBtn);
     tabActionsLayout->addWidget(aboutBtn);
     tabActions->setLayout(tabActionsLayout);
+    if (tabs->tabBar()) tabActions->setFixedHeight(tabs->tabBar()->sizeHint().height());
     tabs->setCornerWidget(tabActions, Qt::TopRightCorner);
 
     auto* expTab = new QWidget;
