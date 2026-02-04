@@ -2201,21 +2201,18 @@ void MainWindow::showAboutDialog() {
     QDialog dlg(this);
     dlg.setWindowTitle("About " + appName);
     dlg.setModal(true);
-    dlg.resize(520, 420);
+    dlg.resize(560, 520);
 
     auto* layout = new QVBoxLayout(&dlg);
     layout->setSpacing(12);
 
     auto* title = new QLabel(QString("<div style='font-size:18pt; font-weight:700;'>%1</div>"
-                                     "<div style='font-size:11pt; color:#6B7280;'>%2</div>")
+                                     "<div style='font-size:11pt; color:#6B7280;'>Version %2</div>")
                                  .arg(appName.toHtmlEscaped())
-                                 .arg(QString("Version %1").arg(version).toHtmlEscaped()));
+                                 .arg(version.toHtmlEscaped()));
     title->setTextFormat(Qt::RichText);
     title->setAlignment(Qt::AlignHCenter);
     layout->addWidget(title);
-
-    auto* form = new QFormLayout;
-    form->setLabelAlignment(Qt::AlignRight);
 
     auto makeKeyLabel = [](const QString& text) {
         auto* l = new QLabel(text);
@@ -2234,7 +2231,25 @@ void MainWindow::showAboutDialog() {
         return l;
     };
 
-    // License status (user-provided)
+    auto makeGroup = [&](const QString& titleText) {
+        auto* box = new QGroupBox(titleText);
+        auto* form = new QFormLayout;
+        form->setLabelAlignment(Qt::AlignRight);
+        form->setFormAlignment(Qt::AlignTop);
+        box->setLayout(form);
+        return std::pair<QGroupBox*, QFormLayout*>(box, form);
+    };
+
+    auto* scroll = new QScrollArea;
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setWidgetResizable(true);
+
+    auto* content = new QWidget;
+    auto* contentLayout = new QVBoxLayout(content);
+    contentLayout->setContentsMargins(0, 0, 0, 0);
+    contentLayout->setSpacing(12);
+
+    // License
     {
         const QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
         bool installed = false;
@@ -2245,16 +2260,37 @@ void MainWindow::showAboutDialog() {
         }
         const QString statusHtml = installed ? QString("<span style='color:#16A34A; font-weight:700;'>Installed</span>")
                                              : QString("<span style='color:#DC2626; font-weight:700;'>Not installed</span>");
-        form->addRow(makeKeyLabel("License"), makeValueLabel(statusHtml));
+        auto [box, f] = makeGroup("License");
+        f->addRow(makeKeyLabel("Status"), makeValueLabel(statusHtml));
+        contentLayout->addWidget(box);
     }
 
-    form->addRow(makeKeyLabel("Author"), makeValueLabel(author.toHtmlEscaped()));
-    form->addRow(makeKeyLabel("GitHub"), makeValueLabel(QString("<a href=\"%1\">%1</a>").arg(githubUrl.toHtmlEscaped())));
-    form->addRow(makeKeyLabel("Gitee"), makeValueLabel(QString("<a href=\"%1\">%1</a>").arg(giteeUrl.toHtmlEscaped())));
-    form->addRow(makeKeyLabel("Qt"), makeValueLabel(QString("<a href=\"https://www.qt.io\">https://www.qt.io</a>")));
-    form->addRow(makeKeyLabel("FFTW"), makeValueLabel(QString("<a href=\"https://www.fftw.org\">https://www.fftw.org</a>")));
+    // Project
+    {
+        auto [box, f] = makeGroup("Project");
+        f->addRow(makeKeyLabel("Author"), makeValueLabel(author.toHtmlEscaped()));
+        contentLayout->addWidget(box);
+    }
 
-    layout->addLayout(form);
+    // Links
+    {
+        auto [box, f] = makeGroup("Links");
+        f->addRow(makeKeyLabel("GitHub"), makeValueLabel(QString("<a href=\"%1\">%1</a>").arg(githubUrl.toHtmlEscaped())));
+        f->addRow(makeKeyLabel("Gitee"), makeValueLabel(QString("<a href=\"%1\">%1</a>").arg(giteeUrl.toHtmlEscaped())));
+        contentLayout->addWidget(box);
+    }
+
+    // Dependencies
+    {
+        auto [box, f] = makeGroup("Dependencies");
+        f->addRow(makeKeyLabel("Qt"), makeValueLabel("<a href=\"https://www.qt.io\">https://www.qt.io</a>"));
+        f->addRow(makeKeyLabel("FFTW"), makeValueLabel("<a href=\"https://www.fftw.org\">https://www.fftw.org</a>"));
+        contentLayout->addWidget(box);
+    }
+
+    contentLayout->addStretch(1);
+    scroll->setWidget(content);
+    layout->addWidget(scroll, 1);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok);
     connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
