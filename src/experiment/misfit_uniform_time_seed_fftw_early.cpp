@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <complex>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <cmath>
 #include <math.h>
@@ -155,6 +156,30 @@ using namespace std;
 static int total_steps = 200;
 static std::string output_dir;
 static unsigned int base_seed = FIXED_SEED;
+
+// -----------------------------------------------------------------------------
+// Deterministic RNG helpers
+// -----------------------------------------------------------------------------
+// NOTE: std::rand() is implementation-defined and yields different sequences on
+// different platforms. We use a small deterministic generator so that the same
+// --seed produces comparable results on Windows/macOS/Linux.
+static inline uint64_t splitmix64_next(uint64_t& state) {
+    uint64_t z = (state += 0x9e3779b97f4a7c15ULL);
+    z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
+    return z ^ (z >> 31);
+}
+
+static inline double rng_u01(uint64_t& state) {
+    // [0, 1) with 53 bits of precision.
+    constexpr double inv = 1.0 / 9007199254740992.0;  // 2^53
+    return static_cast<double>(splitmix64_next(state) >> 11) * inv;
+}
+
+static inline double rng_u11(uint64_t& state) {
+    // (-1, 1)
+    return 2.0 * rng_u01(state) - 1.0;
+}
 
 static void PrintUsage(const char* argv0) {
     cerr
@@ -827,9 +852,10 @@ void INITIAL_dis(fftw_complex* dphi, fftw_complex* dcon, int dlocal_0_start, int
 				center_x = dnx * iii + dnx / 2; center_y = dny * jjj + dny / 2; center_z = dnz * kkk + dnz / 2;
 
 
-				srand(base_seed ^ ((unsigned int)(center_x + center_y + center_z) * 2654435761u));
-				v1 = 80. * (double(rand()) / RAND_MAX - 0.5);
-				v2 = double(rand()) / RAND_MAX / 10.;
+					const unsigned int center_sum = static_cast<unsigned int>((dnx * iii + dnx / 2) + (dny * jjj + dny / 2) + (dnz * kkk + dnz / 2));
+					uint64_t rng_state = static_cast<uint64_t>(base_seed ^ (center_sum * 2654435761u));
+					v1 = 80.0 * (rng_u01(rng_state) - 0.5);
+					v2 = rng_u01(rng_state) / 10.0;
 
 				theta = v1 * pi / 180;
 
@@ -1139,12 +1165,14 @@ void MAINEQUATIONC2MIX(fftw_complex *dphiHat,fftw_complex *dconHat, fftw_complex
 }
 
 void Gauss(fftw_complex *dnois,int dlocal_n0,int dlocal_0_start, int dmyid, int timestep){
-   float iseed_radia=20.;
-   float r,v1,v2,f,ra,x,y,z;
-		 srand(base_seed ^ ((unsigned int)(dmyid+1) * 2654435761u) ^ ((unsigned int)timestep * 374761393u));
-for(int l=0; l <dlocal_n0; l ++){
- for (int m=0; m <M; m ++){
-     for (int n=0; n <N; n ++) {
+	   float iseed_radia=20.;
+	   float r,v1,v2,f,ra,x,y,z;
+	     uint64_t rng_state = static_cast<uint64_t>(base_seed);
+	     rng_state ^= static_cast<uint64_t>(static_cast<unsigned int>(dmyid + 1)) * 2654435761ULL;
+	     rng_state ^= static_cast<uint64_t>(static_cast<unsigned int>(timestep)) * 374761393ULL;
+	for(int l=0; l <dlocal_n0; l ++){
+	 for (int m=0; m <M; m ++){
+	     for (int n=0; n <N; n ++) {
 	//	 if(((dlocal_0_start+l+1-L/2)*(dlocal_0_start+l+1-L/2)+(m+1-M/2)*(m+1-M/2))<32*32){
                   x=(dlocal_0_start+l+1-L/2)*dx;
                   y=(m+1-M/2)*dx;
@@ -1152,16 +1180,15 @@ for(int l=0; l <dlocal_n0; l ++){
                   ra=sqrt(x*x+y*y+z*z);
         
 				  
-        r=2.; 
-        while (r>=1.0f || r<=0.0f) 
-			{ 
-	         v1=2*float(rand())/RAND_MAX-1;
-	         v2=2*float(rand())/RAND_MAX-1;
-	         r=v1*v1+v2*v2;
-			}
-          f=sqrt(-2.*log(r)/r);
-          dnois[n+N*(m+M*l)][0]=f*v1;
-          dnois[n+N*(m+M*l)][1]=0.0;
+	        r = 2.0f;
+	        while (r >= 1.0f || r <= 0.0f) {
+	            v1 = static_cast<float>(rng_u11(rng_state));
+	            v2 = static_cast<float>(rng_u11(rng_state));
+	            r = v1 * v1 + v2 * v2;
+	        }
+	          f=sqrt(-2.*log(r)/r);
+	          dnois[n+N*(m+M*l)][0]=f*v1;
+	          dnois[n+N*(m+M*l)][1]=0.0;
 	//	 }
 
 }
@@ -3545,8 +3572,8 @@ void phimax_atmposi(fftw_complex* dphi, fftw_complex* dcon, int dlocal_n0, int d
 	phic = (pii - pii * phicut);
 	//  cout<<"phic="<<phic<<" "<<"phimax="<<phimax<<" "<<"myid="<<dmyid<<endl;
 	cout << "o" << "myid=" << dmyid << endl;
-	float* buf, *bufc;
-	buf = (float*)fftw_malloc(sizeof(float) * M * (dlocal_n0 + 2));
+	double* buf, *bufc;
+	buf = (double*)fftw_malloc(sizeof(double) * M * (dlocal_n0 + 2));
 	for (int l = 0; l < dlocal_n0 + 2; l++) for (int m = 0; m < M; m++) {
 		buf[m + M * l] = 0;
 	}
@@ -3554,13 +3581,13 @@ void phimax_atmposi(fftw_complex* dphi, fftw_complex* dcon, int dlocal_n0, int d
 		buf[m + M * l] = dphi[m + M * (l - 1)][0];
 	}
 
-	if (dmyid == head) { MPI_Sendrecv(&buf[M], M, MPI_FLOAT, tail, 40, &buf[0], M, MPI_FLOAT, tail, 40, MPI_COMM_WORLD, &stat); }
-	if (dmyid == tail) { MPI_Sendrecv(&buf[(dlocal_n0)*M], M, MPI_FLOAT, head, 40, &buf[(dlocal_n0 + 1) * M], M, MPI_FLOAT, head, 40, MPI_COMM_WORLD, &stat); }
+	if (dmyid == head) { MPI_Sendrecv(&buf[M], M, MPI_DOUBLE, tail, 40, &buf[0], M, MPI_DOUBLE, tail, 40, MPI_COMM_WORLD, &stat); }
+	if (dmyid == tail) { MPI_Sendrecv(&buf[(dlocal_n0)*M], M, MPI_DOUBLE, head, 40, &buf[(dlocal_n0 + 1) * M], M, MPI_DOUBLE, head, 40, MPI_COMM_WORLD, &stat); }
 
-	MPI_Sendrecv(&buf[M * (dlocal_n0)], M, MPI_FLOAT, right, 20, &buf[0], M, MPI_FLOAT, left, 20, MPI_COMM_WORLD, &stat);
-	MPI_Sendrecv(&buf[M], M, MPI_FLOAT, left, 20, &buf[M * (dlocal_n0 + 1)], M, MPI_FLOAT, right, 20, MPI_COMM_WORLD, &stat);
+	MPI_Sendrecv(&buf[M * (dlocal_n0)], M, MPI_DOUBLE, right, 20, &buf[0], M, MPI_DOUBLE, left, 20, MPI_COMM_WORLD, &stat);
+	MPI_Sendrecv(&buf[M], M, MPI_DOUBLE, left, 20, &buf[M * (dlocal_n0 + 1)], M, MPI_DOUBLE, right, 20, MPI_COMM_WORLD, &stat);
 
-	bufc = (float*)fftw_malloc(sizeof(float) * M * (dlocal_n0 + 2));
+	bufc = (double*)fftw_malloc(sizeof(double) * M * (dlocal_n0 + 2));
 	for (int l = 0; l < dlocal_n0 + 2; l++) for (int m = 0; m < M; m++) {
 		bufc[m + M * l] = 0;
 	}
@@ -3568,27 +3595,34 @@ void phimax_atmposi(fftw_complex* dphi, fftw_complex* dcon, int dlocal_n0, int d
 		bufc[m + M * l] = dcon[m + M * (l - 1)][0];
 	}
 
-	if (dmyid == head) { MPI_Sendrecv(&bufc[M], M, MPI_FLOAT, tail, 40, &bufc[0], M, MPI_FLOAT, tail, 40, MPI_COMM_WORLD, &stat); }
-	if (dmyid == tail) { MPI_Sendrecv(&bufc[(dlocal_n0)*M], M, MPI_FLOAT, head, 40, &bufc[(dlocal_n0 + 1) * M], M, MPI_FLOAT, head, 40, MPI_COMM_WORLD, &stat); }
+	if (dmyid == head) { MPI_Sendrecv(&bufc[M], M, MPI_DOUBLE, tail, 40, &bufc[0], M, MPI_DOUBLE, tail, 40, MPI_COMM_WORLD, &stat); }
+	if (dmyid == tail) { MPI_Sendrecv(&bufc[(dlocal_n0)*M], M, MPI_DOUBLE, head, 40, &bufc[(dlocal_n0 + 1) * M], M, MPI_DOUBLE, head, 40, MPI_COMM_WORLD, &stat); }
 
-	MPI_Sendrecv(&bufc[M * (dlocal_n0)], M, MPI_FLOAT, right, 20, &bufc[0], M, MPI_FLOAT, left, 20, MPI_COMM_WORLD, &stat);
-	MPI_Sendrecv(&bufc[M], M, MPI_FLOAT, left, 20, &bufc[M * (dlocal_n0 + 1)], M, MPI_FLOAT, right, 20, MPI_COMM_WORLD, &stat);
+	MPI_Sendrecv(&bufc[M * (dlocal_n0)], M, MPI_DOUBLE, right, 20, &bufc[0], M, MPI_DOUBLE, left, 20, MPI_COMM_WORLD, &stat);
+	MPI_Sendrecv(&bufc[M], M, MPI_DOUBLE, left, 20, &bufc[M * (dlocal_n0 + 1)], M, MPI_DOUBLE, right, 20, MPI_COMM_WORLD, &stat);
 
 
-	// Fallback location (global maximum on this rank; valid for single-process builds).
-	double global_max_phi = -std::numeric_limits<double>::infinity();
-	int global_max_m = 0;
-	int global_max_l = 1;
-	for (int l = 1; l < dlocal_n0 + 1; ++l) {
-		for (int m = 0; m < M; ++m) {
-			const double v = static_cast<double>(buf[m + M * l]);
-			if (std::isfinite(v) && v > global_max_phi) {
-				global_max_phi = v;
-				global_max_m = m;
-				global_max_l = l;
+		// Fallback location (global maximum on this rank; valid for single-process builds).
+		double global_min_phi = std::numeric_limits<double>::infinity();
+		double global_max_phi = -std::numeric_limits<double>::infinity();
+		int finite_phi = 0;
+		int above_cut = 0;
+		int global_max_m = 0;
+		int global_max_l = 1;
+		for (int l = 1; l < dlocal_n0 + 1; ++l) {
+			for (int m = 0; m < M; ++m) {
+				const double v = static_cast<double>(buf[m + M * l]);
+				if (!std::isfinite(v)) continue;
+				finite_phi++;
+				global_min_phi = std::min(global_min_phi, v);
+				global_max_phi = std::max(global_max_phi, v);
+				if (v > -0.07) above_cut++;
+				if (v >= global_max_phi) {
+					global_max_m = m;
+					global_max_l = l;
+				}
 			}
 		}
-	}
 
 	double xtemp, ytemp, ztemp; int num_atoms = 0;
 	int lf, lb, mf, mb, nf, nb;
@@ -3628,8 +3662,32 @@ void phimax_atmposi(fftw_complex* dphi, fftw_complex* dcon, int dlocal_n0, int d
 				return std::isfinite(v) ? v : -std::numeric_limits<double>::infinity();
 			};
 
-			if ((center > nbv(m, lf)) && (center > nbv(m, lb)) && (center > nbv(mf, l)) && (center > nbv(mb, l))
-				&& (center > nbv(mb, lb)) && (center > nbv(mb, lf)) && (center > nbv(mf, lb)) && (center > nbv(mf, lf))) {
+				// Be tolerant to plateaus/ties: accept if center is >= all neighbors and > at least one neighbor.
+				const double n0 = nbv(m, lf);
+				const double n1 = nbv(m, lb);
+				const double n2 = nbv(mf, l);
+				const double n3 = nbv(mb, l);
+				const double n4 = nbv(mb, lb);
+				const double n5 = nbv(mb, lf);
+				const double n6 = nbv(mf, lb);
+				const double n7 = nbv(mf, lf);
+
+				bool ge_all = true;
+				bool gt_any = false;
+				auto visit = [&](double nb) {
+					if (center < nb) ge_all = false;
+					if (center > nb) gt_any = true;
+				};
+				visit(n0);
+				visit(n1);
+				visit(n2);
+				visit(n3);
+				visit(n4);
+				visit(n5);
+				visit(n6);
+				visit(n7);
+
+				if (ge_all && gt_any) {
 
 
 				xtemp = (dlocal_0_start + l + 1) * dx;
@@ -3731,19 +3789,25 @@ void phimax_atmposi(fftw_complex* dphi, fftw_complex* dcon, int dlocal_n0, int d
 	cout << "third" << "myid=" << dmyid << endl;
 	if (dmyid == 0) {
 		int num_atoms_total = 0;
-		for (int i = 0; i < size_buf; i++) {
-			const double x = rbuf_x[i];
-			const double y = rbuf_y[i];
-			const double z = rbuf_z[i];
-			const double v = rbuf_phi[i];
+			for (int i = 0; i < size_buf; i++) {
+				const double x = rbuf_x[i];
+				const double y = rbuf_y[i];
+				const double z = rbuf_z[i];
+				const double v = rbuf_phi[i];
 			const double c = rbuf_con[i];
 			if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) || !std::isfinite(v) || !std::isfinite(c)) continue;
 			if (x < 0) continue;
 			num_atoms_total++;
-		}
-		cout << "num_atoms_total=" << num_atoms_total << endl;
+			}
+			cout << "num_atoms_total=" << num_atoms_total << endl;
+			if (num_atoms_total <= 2) {
+				cout << "phimax_atmposi debug: finite_phi=" << finite_phi
+				     << " above_cut=" << above_cut
+				     << " phi_min=" << global_min_phi
+				     << " phi_max=" << global_max_phi << endl;
+			}
 
-		char filename[20];
+			char filename[20];
 		sprintf(filename, "%s%d%s", "Phimax_", kd, ".txt");
 		ofstream outfile(filename, ios_base::out);
 		outfile.setf(ios_base::fixed, ios_base::floatfield);

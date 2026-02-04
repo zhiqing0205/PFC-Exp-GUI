@@ -27,6 +27,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QMenu>
 #include <QMenuBar>
 #include <QMouseEvent>
 #include <QPainter>
@@ -190,11 +191,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     tabs->tabBar()->setDrawBase(false);
     tabs->tabBar()->setExpanding(false);
 
-    // Menu bar (use two standalone actions instead of a Help menu).
-    auto* uploadLicenseAction = menuBar()->addAction("Upload License…");
+    // Menu bar: use two top-level menus for better macOS native menubar behavior.
+    auto* licenseMenu = menuBar()->addMenu("License");
+    auto* uploadLicenseAction = licenseMenu->addAction("Upload License…");
     connect(uploadLicenseAction, &QAction::triggered, this, &MainWindow::uploadLicense);
 
-    auto* aboutAction = menuBar()->addAction("About");
+    auto* aboutMenu = menuBar()->addMenu("About");
+    auto* aboutAction = aboutMenu->addAction("About MIDNano");
     connect(aboutAction, &QAction::triggered, this, &MainWindow::showAboutDialog);
 
     auto* expTab = new QWidget;
