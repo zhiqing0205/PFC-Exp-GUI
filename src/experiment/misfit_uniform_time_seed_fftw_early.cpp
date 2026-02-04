@@ -1153,12 +1153,12 @@ for(int l=0; l <dlocal_n0; l ++){
         
 				  
         r=2.; 
-        while (r>1) 
-		{ 
-         v1=2*float(rand())/RAND_MAX-1;
-         v2=2*float(rand())/RAND_MAX-1;
-         r=v1*v1+v2*v2;
-		}
+        while (r>=1.0f || r<=0.0f) 
+			{ 
+	         v1=2*float(rand())/RAND_MAX-1;
+	         v2=2*float(rand())/RAND_MAX-1;
+	         r=v1*v1+v2*v2;
+			}
           f=sqrt(-2.*log(r)/r);
           dnois[n+N*(m+M*l)][0]=f*v1;
           dnois[n+N*(m+M*l)][1]=0.0;
@@ -3575,20 +3575,39 @@ void phimax_atmposi(fftw_complex* dphi, fftw_complex* dcon, int dlocal_n0, int d
 	MPI_Sendrecv(&bufc[M], M, MPI_FLOAT, left, 20, &bufc[M * (dlocal_n0 + 1)], M, MPI_FLOAT, right, 20, MPI_COMM_WORLD, &stat);
 
 
+	// Fallback location (global maximum on this rank; valid for single-process builds).
+	double global_max_phi = -std::numeric_limits<double>::infinity();
+	int global_max_m = 0;
+	int global_max_l = 1;
+	for (int l = 1; l < dlocal_n0 + 1; ++l) {
+		for (int m = 0; m < M; ++m) {
+			const double v = static_cast<double>(buf[m + M * l]);
+			if (std::isfinite(v) && v > global_max_phi) {
+				global_max_phi = v;
+				global_max_m = m;
+				global_max_l = l;
+			}
+		}
+	}
+
 	double xtemp, ytemp, ztemp; int num_atoms = 0;
 	int lf, lb, mf, mb, nf, nb;
 	// float pc[L*M][3];
 
 	double* pc_x, * pc_y, * pc_z, * phi_max; float * con_max;
-	pc_x = (double*)malloc(M * dlocal_n0 * sizeof(double));
-	pc_y = (double*)malloc(M * dlocal_n0 * sizeof(double));
-	pc_z = (double*)malloc(M * dlocal_n0 * sizeof(double));
-	phi_max = (double*)malloc(M * dlocal_n0 * sizeof(double));
-	con_max = (float*)malloc(M * dlocal_n0 * sizeof(float));
+	const size_t max_atoms = static_cast<size_t>(M) * static_cast<size_t>(dlocal_n0) * static_cast<size_t>(std::max(1, N));
+	pc_x = (double*)malloc(max_atoms * sizeof(double));
+	pc_y = (double*)malloc(max_atoms * sizeof(double));
+	pc_z = (double*)malloc(max_atoms * sizeof(double));
+	phi_max = (double*)malloc(max_atoms * sizeof(double));
+	con_max = (float*)malloc(max_atoms * sizeof(float));
 	cout << "first" << "myid=" << dmyid << endl;
 
 	for (int n = 0; n < N; n++) for (int m = 0; m < M; m++) for (int l = 1; l < dlocal_n0 + 1; l++) {
-		if (buf[m + M * l] > -0.07) {
+		const double center = static_cast<double>(buf[m + M * l]);
+		if (!std::isfinite(center) || center <= -0.07) {
+			continue;
+		}
 			lf = l - 1;
 			lb = l + 1;
 			mf = m - 1;
@@ -3604,41 +3623,82 @@ void phimax_atmposi(fftw_complex* dphi, fftw_complex* dcon, int dlocal_n0, int d
 			//   if ((buf[m+M*l] >= buf[m+M*lf]) && (buf[m+M*l] >= buf[m+M*lb])&&(buf[m+M*l] >= buf[mf+M*l]) && (buf[m+M*l] >= buf[mb+M*l])
 			//    &&(buf[m+M*l] >= buf[mb+M*lb])&&(buf[m+M*l] >= buf[mb+M*lf])&&(buf[m+M*l] >= buf[mf+M*lb])&&(buf[m+M*l] >= buf[mf+M*lf])){
 
-			if ((buf[m + M * l] > buf[m + M * lf]) && (buf[m + M * l] > buf[m + M * lb]) && (buf[m + M * l] > buf[mf + M * l]) && (buf[m + M * l] > buf[mb + M * l])
-				&& (buf[m + M * l] > buf[mb + M * lb]) && (buf[m + M * l] > buf[mb + M * lf]) && (buf[m + M * l] > buf[mf + M * lb]) && (buf[m + M * l] > buf[mf + M * lf])) {
+			auto nbv = [&](int mm, int ll) -> double {
+				const double v = static_cast<double>(buf[mm + M * ll]);
+				return std::isfinite(v) ? v : -std::numeric_limits<double>::infinity();
+			};
+
+			if ((center > nbv(m, lf)) && (center > nbv(m, lb)) && (center > nbv(mf, l)) && (center > nbv(mb, l))
+				&& (center > nbv(mb, lb)) && (center > nbv(mb, lf)) && (center > nbv(mf, lb)) && (center > nbv(mf, lf))) {
 
 
 				xtemp = (dlocal_0_start + l + 1) * dx;
 				ytemp = (m + 1) * dx;
 				ztemp = (n + 1) * dx;
 
-				double z0 = buf[m + M * l];
-				double z1 = buf[m + M * lb];
-				double z3 = buf[m + M * lf];
-				double z4 = buf[mb + M * l];
-				double z2 = buf[mf + M * l];
-				double a0 = z0;
-				double a1 = 0.5 * (z1 - z3) / dx + 10e-8;
-				double a2 = 0.5 * (z4 - z2) / dx + 10e-8;
-				double a3 = 0.5 * (z1 + z3 - 2. * z0) / (dx * dx) + 10e-8;
-				double a4 = 0.5 * (z2 + z4 - 2. * z0) / (dx * dx) + 10e-8;
-				double delta_x = -a1 / (2. * a3);
-				double delta_y = -a2 / (2. * a4);
+				const double z0 = center;
+				const double z1 = static_cast<double>(buf[m + M * lb]);
+				const double z3 = static_cast<double>(buf[m + M * lf]);
+				const double z4 = static_cast<double>(buf[mb + M * l]);
+				const double z2 = static_cast<double>(buf[mf + M * l]);
 
-				pc_x[num_atoms] = xtemp + delta_x; //(xtemp+1)*dx;//+delta_x;
-				pc_y[num_atoms] = ytemp + delta_y; //(ytemp+1)*dx; //+delta_y;
-				pc_z[num_atoms] = ztemp;
-				phi_max[num_atoms] = a0 - 0.25 * a1 * a1 / a3 - 0.25 * a2 * a2 / a4;
-				con_max[num_atoms] = bufc[m + M * l];
-				num_atoms++;
+				double delta_x = 0.0;
+				double delta_y = 0.0;
+				double phi_local = z0;
+				if (std::isfinite(z1) && std::isfinite(z3) && std::isfinite(z4) && std::isfinite(z2)) {
+					const double dx_d = static_cast<double>(dx);
+					const double inv2dx = 0.5 / dx_d;
+					const double invdx2 = 1.0 / (dx_d * dx_d);
+					const double a1 = (z1 - z3) * inv2dx;
+					const double a2 = (z4 - z2) * inv2dx;
+					const double a3 = 0.5 * (z1 + z3 - 2.0 * z0) * invdx2;
+					const double a4 = 0.5 * (z2 + z4 - 2.0 * z0) * invdx2;
+					const double eps = 1e-12;
+
+					if (std::isfinite(a3) && std::fabs(a3) > eps) delta_x = -a1 / (2.0 * a3);
+					if (std::isfinite(a4) && std::fabs(a4) > eps) delta_y = -a2 / (2.0 * a4);
+
+					const double half_dx = 0.5 * dx_d;
+					delta_x = std::clamp(delta_x, -half_dx, half_dx);
+					delta_y = std::clamp(delta_y, -half_dx, half_dx);
+
+					double phi_interp = z0;
+					if (std::isfinite(a3) && std::fabs(a3) > eps && std::isfinite(a1)) phi_interp -= 0.25 * a1 * a1 / a3;
+					if (std::isfinite(a4) && std::fabs(a4) > eps && std::isfinite(a2)) phi_interp -= 0.25 * a2 * a2 / a4;
+					if (std::isfinite(phi_interp)) phi_local = phi_interp;
+				}
+
+				if (static_cast<size_t>(num_atoms) < max_atoms) {
+					pc_x[num_atoms] = xtemp + delta_x; //(xtemp+1)*dx;//+delta_x;
+					pc_y[num_atoms] = ytemp + delta_y; //(ytemp+1)*dx; //+delta_y;
+					pc_z[num_atoms] = ztemp;
+					phi_max[num_atoms] = phi_local;
+					const double c = static_cast<double>(bufc[m + M * l]);
+					con_max[num_atoms] = std::isfinite(c) ? static_cast<float>(c) : con0;
+					num_atoms++;
+				}
 			}
 
 
-		}
 	}
 
 
-	if (num_atoms == 0) { pc_x[0] = -1; pc_y[0] = -1; pc_z[0] = -1; num_atoms = 1; }// add false data if num_atoms is zero
+	if (num_atoms == 0) {
+		if (dmyid == 0) {
+			cout << "WARNING: no local maxima found; writing global max fallback point" << endl;
+		}
+		const double dx_d = static_cast<double>(dx);
+		const double x0 = (dlocal_0_start + global_max_l + 1) * dx_d;
+		const double y0 = (global_max_m + 1) * dx_d;
+		const double z0 = dx_d;
+		pc_x[0] = x0;
+		pc_y[0] = y0;
+		pc_z[0] = z0;
+		phi_max[0] = std::isfinite(global_max_phi) ? global_max_phi : 0.0;
+		const double c0 = static_cast<double>(bufc[global_max_m + M * global_max_l]);
+		con_max[0] = std::isfinite(c0) ? static_cast<float>(c0) : con0;
+		num_atoms = 1;
+	}
 	cout << num_atoms << " " << dmyid << endl;
 	int* rcounts, * displs;
 	rcounts = (int*)malloc(dnumprocs * sizeof(int));
@@ -3671,7 +3731,16 @@ void phimax_atmposi(fftw_complex* dphi, fftw_complex* dcon, int dlocal_n0, int d
 	cout << "third" << "myid=" << dmyid << endl;
 	if (dmyid == 0) {
 		int num_atoms_total = 0;
-		for (int i = 0; i < size_buf; i++) { if (rbuf_x[i] >= 0) { num_atoms_total++; } }
+		for (int i = 0; i < size_buf; i++) {
+			const double x = rbuf_x[i];
+			const double y = rbuf_y[i];
+			const double z = rbuf_z[i];
+			const double v = rbuf_phi[i];
+			const double c = rbuf_con[i];
+			if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) || !std::isfinite(v) || !std::isfinite(c)) continue;
+			if (x < 0) continue;
+			num_atoms_total++;
+		}
 		cout << "num_atoms_total=" << num_atoms_total << endl;
 
 		char filename[20];
@@ -3680,15 +3749,20 @@ void phimax_atmposi(fftw_complex* dphi, fftw_complex* dcon, int dlocal_n0, int d
 		outfile.setf(ios_base::fixed, ios_base::floatfield);
 		outfile.precision(4);
 
-		outfile << 2*(size_buf) << endl;
+		outfile << 2 * num_atoms_total << endl;
 		outfile << "Kommentar" << endl;
 
 
 		for (int i = 0; i < size_buf; i++) {
-			if (rbuf_x[i] >= 0) {
-				outfile << rbuf_x[i] << " " << rbuf_y[i] << " " << rbuf_z[i] << " " << rbuf_phi[i] << " " << rbuf_con[i] << endl;
-				outfile << rbuf_x[i] << " " << rbuf_y[i] << " " << rbuf_z[i] + 20 << " " << rbuf_phi[i] << " " << rbuf_con[i] << endl;
-			}
+			const double x = rbuf_x[i];
+			const double y = rbuf_y[i];
+			const double z = rbuf_z[i];
+			const double v = rbuf_phi[i];
+			const double c = rbuf_con[i];
+			if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) || !std::isfinite(v) || !std::isfinite(c)) continue;
+			if (x < 0) continue;
+			outfile << x << " " << y << " " << z << " " << v << " " << c << endl;
+			outfile << x << " " << y << " " << z + 20 << " " << v << " " << c << endl;
 		}
 
 		outfile.close();

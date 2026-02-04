@@ -27,7 +27,6 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
-#include <QMenu>
 #include <QMenuBar>
 #include <QMouseEvent>
 #include <QPainter>
@@ -191,16 +190,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     tabs->tabBar()->setDrawBase(false);
     tabs->tabBar()->setExpanding(false);
 
-    // Menu actions (macOS will place About in the app menu automatically).
-    auto* helpMenu = menuBar()->addMenu("&Help");
-    auto* uploadLicenseAction = helpMenu->addAction("Upload License…");
-    uploadLicenseAction->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
+    // Menu bar (use two standalone actions instead of a Help menu).
+    auto* uploadLicenseAction = menuBar()->addAction("Upload License…");
     connect(uploadLicenseAction, &QAction::triggered, this, &MainWindow::uploadLicense);
 
-    helpMenu->addSeparator();
-    auto* aboutAction = helpMenu->addAction("About");
-    aboutAction->setIcon(style()->standardIcon(QStyle::SP_MessageBoxInformation));
-    aboutAction->setMenuRole(QAction::AboutRole);
+    auto* aboutAction = menuBar()->addAction("About");
     connect(aboutAction, &QAction::triggered, this, &MainWindow::showAboutDialog);
 
     auto* expTab = new QWidget;
