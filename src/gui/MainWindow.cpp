@@ -194,7 +194,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     tabActionsLayout->addWidget(uploadLicenseBtn);
     tabActionsLayout->addWidget(aboutBtn);
     tabActions->setLayout(tabActionsLayout);
-    if (tabs->tabBar()) tabActions->setFixedHeight(tabs->tabBar()->sizeHint().height());
     tabs->setCornerWidget(tabActions, Qt::TopRightCorner);
 
     auto* expTab = new QWidget;
@@ -985,9 +984,9 @@ void MainWindow::refreshResultsFileList() {
         return;
     }
 
-    if (loadedName != selectedNow || resultsCurrentFile_.isEmpty()) {
-        loadResultsFile(dir.filePath(selectedNow));
-    }
+    const QString currentPath = resultsCurrentFile_.isEmpty() ? QString() : QFileInfo(resultsCurrentFile_).absoluteFilePath();
+    const QString selectedPath = QFileInfo(dir.filePath(selectedNow)).absoluteFilePath();
+    if (currentPath != selectedPath) loadResultsFile(selectedPath);
 }
 
 static QVector<double> extractNumbersFromLine(const QString& line) {
