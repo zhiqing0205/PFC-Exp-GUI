@@ -200,6 +200,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* aboutAction = aboutMenu->addAction("About MIDNano");
     connect(aboutAction, &QAction::triggered, this, &MainWindow::showAboutDialog);
 
+#ifdef Q_OS_MACOS
+    // On macOS, QMenuBar is native (top of screen) by default and QAction may be re-routed
+    // to the app menu by heuristics. Keep License/About visible and stable in-window.
+    menuBar()->setNativeMenuBar(false);
+    uploadLicenseAction->setMenuRole(QAction::NoRole);
+    aboutAction->setMenuRole(QAction::NoRole);
+#endif
+
     auto* expTab = new QWidget;
     auto* resultsTab = new QWidget;
     auto* manufacturingTab = new QWidget;
