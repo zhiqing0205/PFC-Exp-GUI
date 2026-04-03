@@ -1552,7 +1552,8 @@ Ql_L=0;
 //   MPI_Sendrecv(&temp[N*M*(dlocal_n0-1)],N*M,MPI_FLOAT,right,10,&buf[0],N*M,MPI_FLOAT,left,10,MPI_COMM_WORLD,&stat);
 //
 //
-//   float  treal[N][M][dlocal_n0+1];
+//
+	float treal_val;
 //   int    nvar=1; /* Plot only one variable set */
 //   int    bytes[100], off[100];
 //   off[0]=0;
@@ -1586,8 +1587,8 @@ Ql_L=0;
 //                 for(int n=0; n<N; n++){
 //                    for(int m=0; m<M; m++){
 //                        for(int l=0; l<dlocal_n0; l++){
-//                            treal[n][m][l]=dphi[n+N*(m+M*l)][0];
-//                            fwrite(&treal[n][m][l],sizeof(float),1,outf_tfield);
+//                            treal_val = dphi[n+N*(m+M*l)][0];
+//                            fwrite(&treal_val,sizeof(float),1,outf_tfield);
 //                         }
 //                     }
 //                 }
@@ -1598,8 +1599,8 @@ Ql_L=0;
 //                 for(int n=0; n<N; n++){
 //                    for(int m=0; m<M; m++){
 //                        for(int l=0; l<dlocal_n0+1; l++){
-//                            treal[n][m][l]=buf[n+N*(m+M*l)];
-//                            fwrite(&treal[n][m][l],sizeof(float),1,outf_tfield);
+//                            treal_val = buf[n+N*(m+M*l)];
+//                            fwrite(&treal_val,sizeof(float),1,outf_tfield);
 //                         }
 //                     }
 //                 }
@@ -1695,9 +1696,7 @@ static void sVTKwriteBianry(fftw_complex *dphi, int dlocal_n0, int dlocal_0_star
 		temp[n + N*(m + M*l)] = dphi[n + N*(m + M*l)][0];
 	}
 	MPI_Sendrecv(&temp[N*M*(dlocal_n0 - 1)], N*M, MPI_FLOAT, right, 10, &buf[0], N*M, MPI_FLOAT, left, 10, MPI_COMM_WORLD, &stat);
-
-
-	float  treal[N][M][dlocal_n0 + 1];
+	float treal_val;
 	int    nvar = 1; /* Plot only one variable set */
 	int    bytes[100], off[100];
 	off[0] = 0;
@@ -1732,8 +1731,8 @@ static void sVTKwriteBianry(fftw_complex *dphi, int dlocal_n0, int dlocal_0_star
 		for (int n = 0; n<N; n++) {
 			for (int m = 0; m<M; m++) {
 				for (int l = 0; l<dlocal_n0; l++) {
-					treal[n][m][l] = dphi[n + N*(m + M*l)][0];
-					fwrite(&treal[n][m][l], sizeof(float), 1, outf_tfield);
+					treal_val = dphi[n + N*(m + M*l)][0];
+					fwrite(&treal_val, sizeof(float), 1, outf_tfield);
 				}
 			}
 		}
@@ -1745,8 +1744,8 @@ static void sVTKwriteBianry(fftw_complex *dphi, int dlocal_n0, int dlocal_0_star
 		for (int n = 0; n<N; n++) {
 			for (int m = 0; m<M; m++) {
 				for (int l = 0; l<dlocal_n0 + 1; l++) {
-					treal[n][m][l] = buf[n + N*(m + M*l)];
-					fwrite(&treal[n][m][l], sizeof(float), 1, outf_tfield);
+					treal_val = buf[n + N*(m + M*l)];
+					fwrite(&treal_val, sizeof(float), 1, outf_tfield);
 				}
 			}
 		}
@@ -1812,9 +1811,7 @@ static void sVTKwriteBianryc(fftw_complex *dcon, int dlocal_n0, int dlocal_0_sta
 		temp[n + N*(m + M*l)] = dcon[n + N*(m + M*l)][0];
 	}
 	MPI_Sendrecv(&temp[N*M*(dlocal_n0 - 1)], N*M, MPI_FLOAT, right, 10, &buf[0], N*M, MPI_FLOAT, left, 10, MPI_COMM_WORLD, &stat);
-
-
-	float  treal[N][M][dlocal_n0 + 1];
+	float treal_val;
 	int    nvar = 1; /* Plot only one variable set */
 	int    bytes[100], off[100];
 	off[0] = 0;
@@ -1849,8 +1846,8 @@ static void sVTKwriteBianryc(fftw_complex *dcon, int dlocal_n0, int dlocal_0_sta
 		for (int n = 0; n<N; n++) {
 			for (int m = 0; m<M; m++) {
 				for (int l = 0; l<dlocal_n0; l++) {
-					treal[n][m][l] = dcon[n + N*(m + M*l)][0];
-					fwrite(&treal[n][m][l], sizeof(float), 1, outf_tfield);
+					treal_val = dcon[n + N*(m + M*l)][0];
+					fwrite(&treal_val, sizeof(float), 1, outf_tfield);
 				}
 			}
 		}
@@ -1862,8 +1859,8 @@ static void sVTKwriteBianryc(fftw_complex *dcon, int dlocal_n0, int dlocal_0_sta
 		for (int n = 0; n<N; n++) {
 			for (int m = 0; m<M; m++) {
 				for (int l = 0; l<dlocal_n0 + 1; l++) {
-					treal[n][m][l] = buf[n + N*(m + M*l)];
-					fwrite(&treal[n][m][l], sizeof(float), 1, outf_tfield);
+					treal_val = buf[n + N*(m + M*l)];
+					fwrite(&treal_val, sizeof(float), 1, outf_tfield);
 				}
 			}
 		}
