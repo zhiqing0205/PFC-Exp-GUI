@@ -30,7 +30,10 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets)
 find_package(FFTW3 REQUIRED)
 
 add_executable(pfc_exp_cli
+  src/experiment/main_cli.cpp
   src/experiment/misfit_uniform_time_seed_fftw_early.cpp
+  src/experiment/cvd.cpp
+  src/experiment/elastic.cpp
 )
 target_compile_definitions(pfc_exp_cli PRIVATE
   PFC_GRID_L=${PFC_GRID_L}

@@ -20,11 +20,15 @@ class QProgressBar;
 class QResizeEvent;
 class QSpinBox;
 class QStackedWidget;
+class QPushButton;
 class QTabWidget;
 class QTableWidget;
 class QToolButton;
 
+enum class PfcModel { Misfit, CVD, Elastic };
+
 struct RunParams {
+    PfcModel model = PfcModel::Misfit;
     double u0 = 0.05;
     double con0 = 0.2;
     double sig = 0.05;
@@ -33,6 +37,14 @@ struct RunParams {
     int steps = 200;
     int mod = 25;
     int seed = 20200604;
+    // Misfit/Elastic specific
+    int grainx = 16;
+    int grainy = 16;
+    int grainz = 1;
+    double axx = 0.0;
+    // Elastic specific
+    double benchel = 1.7;
+    QString inputDir;
 };
 
 struct RunJob {
@@ -133,6 +145,16 @@ private:
     };
 
     QVector<SweepParamWidgets> sweepParams_;
+
+    QTabWidget* experimentSubTabs_ = nullptr;
+    QVector<SweepParamWidgets> sweepParamsMisfit_;
+    QVector<SweepParamWidgets> sweepParamsCvd_;
+    QVector<SweepParamWidgets> sweepParamsElastic_;
+    QPushButton* expRunBtn_ = nullptr;
+    QPushButton* expStopBtn_ = nullptr;
+
+    PfcModel activeModel() const;
+    QVector<SweepParamWidgets>& activeModelParams();
 
     QLineEdit* expBaseOutDir_ = nullptr;
     QLineEdit* expName_ = nullptr;

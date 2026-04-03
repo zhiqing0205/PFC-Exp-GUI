@@ -1,6 +1,6 @@
-// Build: see README.md (CMake + FFTW)
-// Model: Misfit strain PFC simulation
-//Date: 2014.09.25
+// CVD (Controlled Vapor Deposition) PFC simulation model
+// Adapted from ref/cvd.cpp for unified CLI framework
+// Date: 2014.09.25
 
 #include "pfc_common.h"
 
@@ -10,100 +10,94 @@ static constexpr int N = PFC_GRID_N;
 
 using namespace std;
 
-static int total_steps = 200;
-static std::string output_dir;
-static unsigned int base_seed = FIXED_SEED;
-
-static void PrintUsage(const char* argv0) {
-    cerr
-        << "Usage: " << (argv0 ? argv0 : "pfc-exp-cli") << " --model misfit [options]\n"
-        << "Options:\n"
-        << "  --u0 <float>        Density/phi mean (default: 0.05)\n"
-        << "  --con0 <float>      Concentration mean (default: 0.2)\n"
-        << "  --sig <float>       Kernel decay sigma (default: 0.05)\n"
-        << "  --dt <float>        Time step (default: 0.05)\n"
-        << "  --dx <float>        Space step (default: 0.125)\n"
-        << "  --steps <int>       Total iterations (default: 200)\n"
-        << "  --mod <int>         Output/analysis interval (default: 25)\n"
-        << "  --seed <uint>       Random seed base (default: 20200604)\n"
-        << "  --grainx <int>      Initial grains in x (default: 16)\n"
-        << "  --grainy <int>      Initial grains in y (default: 16)\n"
-        << "  --grainz <int>      Initial grains in z (default: 1)\n"
-        << "  --axx <float>       Noise base intensity (default: 0)\n"
-        << "  --outdir <path>     Output directory (default: current dir)\n"
-        << "  -h, --help          Show this help\n";
-}
-
-// Use shared arg parsing helpers from pfc_common.h
-#define ParseIntArg PFC_ParseIntArg
-#define ParseFloatArg PFC_ParseFloatArg
-#define ParseUintArg PFC_ParseUintArg
-#define HasPrefix PFC_HasPrefix
-
-
-
-//ʼԭܶ
-static void INITIAL_dis(fftw_complex *dphi,fftw_complex *dcon,int dlocal_0_start, int dlocal_n0, int dmyid, int dnumprocs);
-static void INITIAL_con(fftw_complex *dcon,int dlocal_n0); 
-//Ҷ任ķŴЧӦ
-static void UPDATECOEF(fftw_complex *dphi,fftw_complex *dcon,int dlocal_n0);  
-//ֱغ
-static void C2AK(float *dC2AHat, int dlocal_n0, int dlocal_0_start);
-static void C2BK(float *dC2BHat, int dlocal_n0, int dlocal_0_start);
-static void C2BKtri(float *dC2BHat, int dlocal_n0, int dlocal_0_start);
-//123
-static void UPDATEINN3(fftw_complex *din1, fftw_complex *dphi,int dlocal_n0);
-static void UPDATEINFMIX(fftw_complex *din2, fftw_complex *dcon,int dlocal_n0);
-static void UPDATEINFCMIX(fftw_plan pea,fftw_plan peb,fftw_complex *din3,float *dC2AHat ,float *dC2BHat, fftw_complex *dphiHat, fftw_complex *dc2adenp,fftw_complex *dc2bdenp,fftw_complex *dc2aden,fftw_complex *dc2bden,fftw_complex *dcon,int dlocal_n0);
-//  
-static void UPDATEINC2MIX(fftw_complex *dinn, fftw_complex *din1,fftw_complex *din2,fftw_complex *din3,int dlocal_n0);
-static void UPDATEINC2MIXC(fftw_complex *dinc, fftw_complex *dphi, fftw_complex *dc2aden,fftw_complex *dc2bden,fftw_complex *dcon,int dlocal_n0);
-//ѧ
-static void MAINEQUATIONC2MIX(fftw_complex *dphiHat,fftw_complex *dconHat, fftw_complex *doutn,fftw_complex *doutc, int dlocal_n0, int dlocal_0_start); 
-//ѧ
-static void MAINEQUATIONC2_NOI(fftw_complex *dphiHat,fftw_complex *dconHat, fftw_complex *doutn,fftw_complex *doutc,fftw_complex *dnoisf, int dlocal_n0, int dlocal_0_start); 
-static void UPDATEINC2GRA(fftw_plan pe1,fftw_plan pe2,fftw_plan pe3, fftw_complex *dgra1,fftw_complex *dgra2,fftw_complex *dgra3, fftw_complex *dgrao1,fftw_complex *dgrao2,fftw_complex *dgrao3,fftw_complex *dconHat, fftw_complex *dgrac, float *dkrefl,float *dkrefm,float *dkrefn,int dlocal_n0);
-//DATļ
-static void DAT(fftw_complex *dphi,fftw_complex *dcon,int dmyid,int dnumprocs,int dlocal_n0,int dlocal_0_start);
-//Gauss
-static void Gauss(fftw_complex *dnois,int dlocal_n0,int dlocal_0_start,int dmyid,int timestep);
-//
-static void ENERGYC2(fftw_plan pe, fftw_complex *dphi, fftw_complex *dcon,fftw_complex *dconHat,fftw_complex *din3,fftw_complex *din,fftw_complex *dgrac,fftw_complex *dout,double *denei,double &dEEsum,double &dDSsum,int dlocal_n0,int dlocal_0_start,int dmyid, int dnumprocs);
-//read txt
-static void INITIALREADPHI(fftw_complex *dphi, fftw_complex *dcon,int dlocal_n0,int dmyid);
-//Ѱԭλ
-static void atompositionCFGC2(fftw_complex *dphi,int dlocal_n0,int dlocal_0_start, int dmyid,int dnumprocs);
-//Էֲ
-static void GR(float *drbuf_x, float *drbuf_y, float *drbuf_z, int dsize_buf);
-//Q6
-static void Q6_GLO(float *drbuf_x, float *drbuf_y, float *drbuf_z, int dsize_buf);
-//txtʽܶ
-static void OUTPUTPHI(fftw_complex *dphi,fftw_complex *dcon,int dmyid,int dnumprocs,int dlocal_n0,int dlocal_0_start);
-//(100)(010)(001)ܶ
-static void SLICE(fftw_complex *dphi,fftw_complex *dcon,int dmyid,int dnumprocs,int dlocal_n0,int dlocal_0_start);
-//ṹhcpܶ
-static void SLICEHat(float *dphi,int dmyid,int dnumprocs,int dlocal_n0,int dlocal_0_start,char *slicename);
-//100ϵܶ
-static void LINEF(fftw_complex *dphi,fftw_complex *dcon,int dmyid,int dnumprocs,int dlocal_n0,int dlocal_0_start,char *LINEname);
-//100110111ϵܶԼƽܶ
-static void OUTPUT(fftw_complex *dphi,fftw_complex *dcon,double *denei,float *dphiave,float *dconave,float *denei_ave,int dlocal_n0,int dlocal_0_start,int dmyid,int dnumprocs);
-//
-static void interface_energy(fftw_complex *dphi,double *denei,float *dphiave,float *denei_ave,int dmyid,int dnumprocs,int dlocal_n0,int dlocal_0_start);
-//void enei_av(double *denei,float  *denei_ave, int dmyid,int dnumprocs,int dlocal_n0,int dlocal_0_start);
-//q4+q6
-static void phimax_atmposi(fftw_complex* dphi, fftw_complex* dcon, int dlocal_n0, int dlocal_0_start, int dmyid, int dnumprocs);
-static void cryst_order(double *drbuf_x, double *drbuf_y, double *drbuf_z, double *dphimax, int dsize_buf);
-
-// Use shared spherical harmonics from pfc_common.h
+// Use shared utilities from pfc_common.h
+#define ks pfc_ks
+#define min3 pfc_min3
 #define Ylmtf_r pfc_Ylmtf_r
 #define Ylmtf_c pfc_Ylmtf_c
 #define plgndr pfc_plgndr
 #define lg_poly pfc_lg_poly
 #define facto pfc_facto
-static void sVTKwriteBianry(fftw_complex *dphi,int dlocal_n0,int dlocal_0_start,int dmyid,int dnumprocs);
-static void PVTKWRITE(int dlocal_n0,int dnumprocs,int dstartz,int dendz,char *dfilename);
-static void sVTKwriteBianryc(fftw_complex *dcon,int dlocal_n0,int dlocal_0_start,int dmyid,int dnumprocs);
-static void PVTKWRITEC(int dlocal_n0,int dnumprocs,int dstartz,int dendz,char *dfilename);
+
+static int total_steps = 2000;
+static std::string output_dir;
+static unsigned int base_seed = FIXED_SEED;
+
+static float a_100=1.0, a_110=1.414*a_100, a_111=1.732*a_100; 
+static float ai=10;
+
+
+
+
+
+static float a_lattice=1.0,b_lattice=sqrt(3.0)/2.0; //lattice A and B for square
+
+static float u0 = 0.01, sig = 0.03, con0 = 0.2, dt = 0.05, dx = 0.125;
+//static float u0=0.01,sig=0.03,con0=0.2.,dt=0.01,dx=0.125;
+static float gaa1=0.8, gaa2=gaa1*sqrt(2.); //for A  //alpha parts in Gauss terms
+static float gab1=0.8, gab2=gaa2*sqrt(2.); //for B
+static float niu=1.4,ksi=1.,epsilona0=0.0,epsilonb0=0.0,epsilona=0.0,epsilonb=0.0;
+static float  ka0=2.0*pi/a_lattice,ka1=2.0*pi,ka2=sqrt(2.0)*ka1,sigMa1=0.55,sigMa2=0.55; //for square A
+
+static float kb0=2.5*pi/b_lattice,kb1=5.0*pi/sqrt(3.0),kb2=kb1*sqrt(2.0),sigMb1=0.55,sigMb2=0.55; //for square B
+//static float kb0=2.0*pi/b_lattice,kb1=1.0,roub1=1.0,sigMb1=0.55,sigMb2=0.55; //for triangle B
+
+static float para_c0=0.5,dynamic_mn=1.,dynamic_mc=1.,para_alpha=0.5,para_w=0.02;
+
+
+
+
+
+static float axx=0.0*a_lattice,b0=sqrt(axx/dx/dx/dx/dt),b1=1.0*a_lattice,lam=a_lattice/sqrt(2.);  //noise
+
+static int kd=0,mod=200;
+
+
+
+static float f_l,f_s,phi_l,phi_s,con_l,con_s;
+static float phimm=-1.0,phi_rat=0.618,phimin=0.0;
+static double enERgy[TTT]; 
+static double energySum=0.0;
+static float krefl[L],krefm[M],krefn[N];
+// ks provided by pfc_common.h
+// min3 provided by pfc_common.h
+
+static float frame_x=L*dx,frame_y=M*dx,frame_z=N*dx; 
+static float nx=frame_x/a_lattice,ny=frame_y/a_lattice,nz=frame_z/a_lattice;
+static int topmax=N-30,topmin=30;
+// facepositon removed (was fixed-size with Tend)
+
+// Forward declarations
+static void INITIAL_C2(fftw_complex *dphi,fftw_complex *dcon,int dlocal_0_start, int dlocal_n0);
+static void INITIAL_con(fftw_complex *dcon,int dlocal_n0); 
+static void UPDATECOEF(fftw_complex *dphi,fftw_complex *dcon,int dlocal_n0);  
+static void C2AK(float *dC2AHat, int dlocal_n0, int dlocal_0_start);
+static void C2BK(float *dC2BHat, int dlocal_n0, int dlocal_0_start);
+static void UPDATEINN3(fftw_complex *din1, fftw_complex *dphi,int dlocal_n0);
+static void UPDATEINFMIX(fftw_complex *din2, fftw_complex *dcon,int dlocal_n0);
+static void UPDATEINFCMIX(fftw_plan pea,fftw_plan peb,fftw_complex *din3,float *dC2AHat ,float *dC2BHat, fftw_complex *dphiHat, fftw_complex *dc2adenp,fftw_complex *dc2bdenp,fftw_complex *dc2aden,fftw_complex *dc2bden,fftw_complex *dcon,int dlocal_n0);
+static void UPDATEINC2MIX(fftw_complex *dinn, fftw_complex *din1,fftw_complex *din2,fftw_complex *din3,int dlocal_n0);
+static void UPDATEINC2MIXC(fftw_complex *dinc, fftw_complex *dphi, fftw_complex *dc2aden,fftw_complex *dc2bden,fftw_complex *dcon,int dlocal_n0);
+static void MAINEQUATIONC2MIX(fftw_complex *dphiHat,fftw_complex *dconHat, fftw_complex *doutn,fftw_complex *doutc, int dlocal_n0, int dlocal_0_start); 
+static void MAINEQUATIONC2_NOI(fftw_complex *dphiHat,fftw_complex *dconHat, fftw_complex *doutn,fftw_complex *doutc,fftw_complex *dnoisf, int dlocal_n0, int dlocal_0_start); 
+static void UPDATEINC2GRA(fftw_plan pe1,fftw_plan pe2,fftw_plan pe3, fftw_complex *dgra1,fftw_complex *dgra2,fftw_complex *dgra3, fftw_complex *dgrao1,fftw_complex *dgrao2,fftw_complex *dgrao3,fftw_complex *dconHat, fftw_complex *dgrac, float *dkrefl,float *dkrefm,float *dkrefn,int dlocal_n0);
+static void DAT(fftw_complex *dphi,fftw_complex *dcon,int dmyid,int dnumprocs,int dlocal_n0,int dlocal_0_start);
+static void Gauss(fftw_complex *dnois,int dlocal_n0,int dlocal_0_start,int dmyid);
+static void ENERGYC2(fftw_plan pe, fftw_complex *dphi, fftw_complex *dcon,fftw_complex *dconHat,fftw_complex *din3,fftw_complex *din,fftw_complex *dgrac,fftw_complex *dout,double *denei,double &dEEsum,double &dDSsum,int dlocal_n0,int dlocal_0_start,int dmyid, int dnumprocs);
+static void INITIALREADPHI(fftw_complex *dphi, fftw_complex *dcon,int dlocal_n0,int dmyid);
+static void atompositionCFGC2(fftw_complex *dphi,int dlocal_n0,int dlocal_0_start, int dmyid,int dnumprocs);
+static void GR(float *drbuf_x, float *drbuf_y, float *drbuf_z, int dsize_buf);
+static void Q6_GLO(float *drbuf_x, float *drbuf_y, float *drbuf_z, int dsize_buf);
+static void OUTPUTPHI(fftw_complex *dphi,fftw_complex *dcon,int dmyid,int dnumprocs,int dlocal_n0,int dlocal_0_start);
+static void SLICE(fftw_complex *dphi,fftw_complex *dcon,int dmyid,int dnumprocs,int dlocal_n0,int dlocal_0_start);
+static void SLICEHat(float *dphi,int dmyid,int dnumprocs,int dlocal_n0,int dlocal_0_start,char *slicename);
+static void LINEF(fftw_complex *dphi,fftw_complex *dcon,int dmyid,int dnumprocs,int dlocal_n0,int dlocal_0_start,char *LINEname);
+static void OUTPUT(fftw_complex *dphi,fftw_complex *dcon,double *denei,float *dphiave,float *dconave,float *denei_ave,int dlocal_n0,int dlocal_0_start,int dmyid,int dnumprocs);
+static void interface_energy(fftw_complex *dphi,double *denei,float *dphiave,float *denei_ave,int dmyid,int dnumprocs,int dlocal_n0,int dlocal_0_start);
+static void sVTKwriteBianry(fftw_complex *dphi, int dlocal_n0, int dlocal_0_start, int dmyid, int dnumprocs);
+static void PVTKWRITE(int dlocal_n0, int dnumprocs, int dstartz, int dendz, char *dfilename);
+static void sVTKwriteBianryc(fftw_complex *dcon, int dlocal_n0, int dlocal_0_start, int dmyid, int dnumprocs);
+static void PVTKWRITEC(int dlocal_n0, int dnumprocs, int dstartz, int dendz, char *dfilename);
 static void SMOOTHP(float *dphi,float *dphiave,int dlocal_n0,int dlocal_0_start,int dmyid,int dnumprocs,char *dfilename);
 static void SMOOTHC(float *dcon,float *dconave,int dlocal_n0,int dlocal_0_start,int dmyid,int dnumprocs,char *dfilename);
 static void SMOOTHE(float *dphi,float *denei_ave,int dlocal_n0,int dlocal_0_start,int dmyid,int dnumprocs,char *dfilename);
@@ -113,69 +107,21 @@ static void inirotationzb(float vtr2[9], float rotmatrix[9]);
 static void ROT_XYZ(float dang_base[9], float dang[9], float *dtheta, char *daxis);
 static void READPHIVTIN(fftw_complex *dphi, int dlocal_n0,int dmyid);
 static void READPHIVTIC(fftw_complex *dcon, int dlocal_n0,int dmyid);
-static float a_100=1.0, a_110=1.414*a_100, a_111=1.732*a_100; 
-static float ai=10;
 
-
-
-
-
-static float a_lattice=1.0,b_lattice=0.88; //lattice A and B for square
-
-static float u0=0.05,sig=0.05,con0=0.2,dt=0.05,dx=0.125;
-static float gaa1=0.8, gaa2=gaa1*sqrt(2.); //for A  //alpha parts in Gauss terms
-static float gab1=0.8, gab2=gaa2*sqrt(2.); //for B
-static float niu=1.4,ksi=1.,epsilona0=0.0,epsilonb0=0.0,epsilona=0.0,epsilonb=0.0;
-static float  ka0=2.0*pi/a_lattice,ka1=2.0*pi,ka2=sqrt(2.0)*ka1,sigMa1=0.55,sigMa2=0.55; //for square A
-
-static float kb0=2.0*pi/b_lattice,kb1=kb0,kb2=kb1*sqrt(2.0),sigMb1=0.55,sigMb2=0.55; //for square B
-//static float kb0=2.0*pi/b_lattice,kb1=1.0,roub1=1.0,sigMb1=0.55,sigMb2=0.55; //for triangle B
-
-static float para_c0=0.5,dynamic_mn=0.1,dynamic_mc=10.,para_alpha=0.5,para_w=0.02;
-
-
-
-static int grainx=16,grainy=16,grainz=1;
-static int dnx=0,dny=0,dnz=0;
-
-static float axx=0.0*a_lattice,b0=0.0,b1=1.0*a_lattice,lam=a_lattice/sqrt(2.);  //noise
-
-static int kd=0,mod=25;
-static int theta1 = 0, theta2 = 0;
-
-static float bench_l = 0.8, bench_h = 0.94, bench100_l = 0.796, bench100_h = 1.2;
-
-
-static float f_l,f_s,phi_l,phi_s,con_l,con_s;
-static float phimm=-1.0,phi_rat=0.618,phimin=0.0;
-static double enERgy[TTT]; 
-static double energySum=0.0;
-static float krefl[L],krefm[M],krefn[N];
-// Use shared utility functions from pfc_common.h
-#define ks pfc_ks
-#define min3 pfc_min3
-
-static float frame_x=0.0,frame_y=0.0,frame_z=0.0; 
-static float nx=0.0,ny=0.0,nz=0.0;
-static int topmax=N-30,topmin=30;
-
-static void RecomputeDerivedParams() {
-    dnx = (grainx > 0) ? (L / grainx) : 0;
-    dny = (grainy > 0) ? (M / grainy) : 0;
-    dnz = (grainz > 0) ? (N / grainz) : 0;
-
-    frame_x = L * dx;
-    frame_y = M * dx;
-    frame_z = N * dx;
-    nx = frame_x / a_lattice;
-    ny = frame_y / a_lattice;
-    nz = frame_z / a_lattice;
-
-    if (dx > 0.0f && dt > 0.0f && axx >= 0.0f) {
-        b0 = sqrt(axx / dx / dx / dx / dt);
-    } else {
-        b0 = 0.0f;
-    }
+static void PrintUsage(const char* argv0) {
+    cerr
+        << "Usage: " << (argv0 ? argv0 : "pfc-exp-cli") << " --model cvd [options]\n"
+        << "Options:\n"
+        << "  --u0 <float>        Density/phi mean (default: 0.01)\n"
+        << "  --con0 <float>      Concentration mean (default: 0.2)\n"
+        << "  --sig <float>       Kernel decay sigma (default: 0.03)\n"
+        << "  --dt <float>        Time step (default: 0.05)\n"
+        << "  --dx <float>        Space step (default: 0.125)\n"
+        << "  --steps <int>       Total iterations (default: 2000)\n"
+        << "  --mod <int>         Output/analysis interval (default: 200)\n"
+        << "  --seed <uint>       Random seed base (default: 20200604)\n"
+        << "  --outdir <path>     Output directory (default: current dir)\n"
+        << "  -h, --help          Show this help\n";
 }
 
 static int ParseArgs(int argc, char** argv, int myid) {
@@ -186,9 +132,7 @@ static int ParseArgs(int argc, char** argv, int myid) {
 
         auto require_value = [&](const char* opt) -> const char* {
             if (i + 1 >= argc) {
-                if (myid == 0) {
-                    cerr << "Missing value after " << opt << "\n";
-                }
+                if (myid == 0) cerr << "Missing value after " << opt << "\n";
                 return nullptr;
             }
             return argv[++i];
@@ -196,121 +140,82 @@ static int ParseArgs(int argc, char** argv, int myid) {
 
         if (arg == "-h" || arg == "--help") {
             if (myid == 0) PrintUsage(argv[0]);
-            return 1;
+            MPI_Finalize();
+return 0;
         }
-
-        if (arg == "--u0" || HasPrefix(arg, "--u0=")) {
-            const char* v = (arg == "--u0") ? require_value("--u0") : (raw + strlen("--u0="));
-            if (!ParseFloatArg(v, u0)) goto bad_args;
+        if (arg == "--u0" || PFC_HasPrefix(arg, "--u0=")) {
+            const char* v = (arg == "--u0") ? require_value("--u0") : (raw + 5);
+            if (!PFC_ParseFloatArg(v, u0)) goto bad;
             continue;
         }
-        if (arg == "--con0" || HasPrefix(arg, "--con0=")) {
-            const char* v = (arg == "--con0") ? require_value("--con0") : (raw + strlen("--con0="));
-            if (!ParseFloatArg(v, con0)) goto bad_args;
+        if (arg == "--con0" || PFC_HasPrefix(arg, "--con0=")) {
+            const char* v = (arg == "--con0") ? require_value("--con0") : (raw + 7);
+            if (!PFC_ParseFloatArg(v, con0)) goto bad;
             continue;
         }
-        if (arg == "--sig" || HasPrefix(arg, "--sig=")) {
-            const char* v = (arg == "--sig") ? require_value("--sig") : (raw + strlen("--sig="));
-            if (!ParseFloatArg(v, sig)) goto bad_args;
+        if (arg == "--sig" || PFC_HasPrefix(arg, "--sig=")) {
+            const char* v = (arg == "--sig") ? require_value("--sig") : (raw + 6);
+            if (!PFC_ParseFloatArg(v, sig)) goto bad;
             continue;
         }
-        if (arg == "--dt" || HasPrefix(arg, "--dt=")) {
-            const char* v = (arg == "--dt") ? require_value("--dt") : (raw + strlen("--dt="));
-            if (!ParseFloatArg(v, dt)) goto bad_args;
+        if (arg == "--dt" || PFC_HasPrefix(arg, "--dt=")) {
+            const char* v = (arg == "--dt") ? require_value("--dt") : (raw + 5);
+            if (!PFC_ParseFloatArg(v, dt)) goto bad;
             continue;
         }
-        if (arg == "--dx" || HasPrefix(arg, "--dx=")) {
-            const char* v = (arg == "--dx") ? require_value("--dx") : (raw + strlen("--dx="));
-            if (!ParseFloatArg(v, dx)) goto bad_args;
+        if (arg == "--dx" || PFC_HasPrefix(arg, "--dx=")) {
+            const char* v = (arg == "--dx") ? require_value("--dx") : (raw + 5);
+            if (!PFC_ParseFloatArg(v, dx)) goto bad;
             continue;
         }
-        if (arg == "--steps" || HasPrefix(arg, "--steps=")) {
-            const char* v = (arg == "--steps") ? require_value("--steps") : (raw + strlen("--steps="));
-            if (!ParseIntArg(v, total_steps)) goto bad_args;
+        if (arg == "--steps" || PFC_HasPrefix(arg, "--steps=")) {
+            const char* v = (arg == "--steps") ? require_value("--steps") : (raw + 8);
+            if (!PFC_ParseIntArg(v, total_steps)) goto bad;
             continue;
         }
-        if (arg == "--mod" || HasPrefix(arg, "--mod=")) {
-            const char* v = (arg == "--mod") ? require_value("--mod") : (raw + strlen("--mod="));
-            if (!ParseIntArg(v, mod)) goto bad_args;
+        if (arg == "--mod" || PFC_HasPrefix(arg, "--mod=")) {
+            const char* v = (arg == "--mod") ? require_value("--mod") : (raw + 6);
+            if (!PFC_ParseIntArg(v, mod)) goto bad;
             continue;
         }
-        if (arg == "--seed" || HasPrefix(arg, "--seed=")) {
-            const char* v = (arg == "--seed") ? require_value("--seed") : (raw + strlen("--seed="));
-            if (!ParseUintArg(v, base_seed)) goto bad_args;
+        if (arg == "--seed" || PFC_HasPrefix(arg, "--seed=")) {
+            const char* v = (arg == "--seed") ? require_value("--seed") : (raw + 7);
+            if (!PFC_ParseUintArg(v, base_seed)) goto bad;
             continue;
         }
-        if (arg == "--grainx" || HasPrefix(arg, "--grainx=")) {
-            const char* v = (arg == "--grainx") ? require_value("--grainx") : (raw + strlen("--grainx="));
-            if (!ParseIntArg(v, grainx)) goto bad_args;
-            continue;
-        }
-        if (arg == "--grainy" || HasPrefix(arg, "--grainy=")) {
-            const char* v = (arg == "--grainy") ? require_value("--grainy") : (raw + strlen("--grainy="));
-            if (!ParseIntArg(v, grainy)) goto bad_args;
-            continue;
-        }
-        if (arg == "--grainz" || HasPrefix(arg, "--grainz=")) {
-            const char* v = (arg == "--grainz") ? require_value("--grainz") : (raw + strlen("--grainz="));
-            if (!ParseIntArg(v, grainz)) goto bad_args;
-            continue;
-        }
-        if (arg == "--axx" || HasPrefix(arg, "--axx=")) {
-            const char* v = (arg == "--axx") ? require_value("--axx") : (raw + strlen("--axx="));
-            if (!ParseFloatArg(v, axx)) goto bad_args;
-            continue;
-        }
-        if (arg == "--outdir" || HasPrefix(arg, "--outdir=")) {
-            const char* v = (arg == "--outdir") ? require_value("--outdir") : (raw + strlen("--outdir="));
-            if (!v || *v == '\0') goto bad_args;
+        if (arg == "--outdir" || PFC_HasPrefix(arg, "--outdir=")) {
+            const char* v = (arg == "--outdir") ? require_value("--outdir") : (raw + 9);
+            if (!v || *v == '\0') goto bad;
             output_dir = v;
             continue;
         }
-
-        if (myid == 0) {
-            cerr << "Unknown option: " << arg << "\n";
-        }
-        goto bad_args;
+        // Skip unknown args silently (may be from dispatcher)
+        continue;
     }
-
-    if (total_steps <= 0) {
-        if (myid == 0) cerr << "--steps must be > 0\n";
-        goto bad_args;
+    if (total_steps <= 0 || dt <= 0.0f || dx <= 0.0f || mod <= 0) {
+        if (myid == 0) cerr << "Invalid parameter values\n";
+        goto bad;
     }
-    if (dt <= 0.0f) {
-        if (myid == 0) cerr << "--dt must be > 0\n";
-        goto bad_args;
-    }
-    if (dx <= 0.0f) {
-        if (myid == 0) cerr << "--dx must be > 0\n";
-        goto bad_args;
-    }
-    if (mod <= 0) {
-        if (myid == 0) cerr << "--mod must be > 0\n";
-        goto bad_args;
-    }
-    if (grainx <= 0 || grainy <= 0 || grainz <= 0) {
-        if (myid == 0) cerr << "--grainx/--grainy/--grainz must be > 0\n";
-        goto bad_args;
-    }
-    if (grainx > L || grainy > M || grainz > N) {
-        if (myid == 0) {
-            cerr << "--grainx/--grainy/--grainz must not exceed grid dimensions (L=" << L << " M=" << M << " N=" << N
-                 << ")\n";
-        }
-        goto bad_args;
-    }
-
-    RecomputeDerivedParams();
     return 0;
-
-bad_args:
+bad:
     if (myid == 0) PrintUsage(argv[0]);
     return 2;
 }
 
-int run_misfit(int argc, char **argv) {
+static void RecomputeDerivedParams() {
+    frame_x = L * dx;
+    frame_y = M * dx;
+    frame_z = N * dx;
+    nx = frame_x / a_lattice;
+    ny = frame_y / a_lattice;
+    nz = frame_z / a_lattice;
+    b0 = (dx > 0.0f && dt > 0.0f && axx >= 0.0f) ? sqrt(axx / dx / dx / dx / dt) : 0.0f;
+}
 
-	double EEsum,bufEEsum,EEsumTotal,DSsum,EE_sum=1.0E8, *enei=0 ;
+int run_cvd(int argc, char **argv) {
+
+
+double EEsum,bufEEsum,EEsumTotal,DSsum,EE_sum=1.0E8, *enei=0 ;
 float *phiHatPow=0, *phiHati=0;
 float *enei_ave,*phiave,*conave;
 float *C2Hat=0,*C2AHat=0,*C2BHat=0;
@@ -321,81 +226,73 @@ fftw_complex *in1=0,*in2=0,*in3=0, *out=0,*outn=0,*outc=0, *nois=0, *noisf=0, *V
 fftw_plan p1, p2,p3,p4, p5,p6,p7,p8,p9,p10,p11,pe12,pe13,pe14;
 ptrdiff_t alloc_local,local_n0,local_0_start;
 int myid,numprocs;
-ofstream checkpoint_log;
 
-	MPI_Status stat;
-	float  Vel,bufVel,VelTotal;
-	int icd=25;
-	int intertop=L-1-icd, interlow=1+icd;
-	//int dmyid;
+MPI_Status stat;
+float  Vel,bufVel,VelTotal;
+int icd=25;
+int intertop=L-1-icd, interlow=1+icd;
+//int dmyid;
+MPI_Init(&argc, &argv);
+fftw_mpi_init();
+MPI_Comm_rank(MPI_COMM_WORLD, & myid);
+MPI_Comm_size(MPI_COMM_WORLD, & numprocs);
 
-	for (int i = 1; i < argc; ++i) {
-	    if (!argv[i]) continue;
-	    if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
-	        PrintUsage(argv[0]);
-	        return 0;
-	    }
-	}
+    // Parse CLI arguments
+    for (int i = 1; i < argc; ++i) {
+        if (!argv[i]) continue;
+        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+            PrintUsage(argv[0]);
+            return 0;
+        }
+    }
+    const int parse_rc = ParseArgs(argc, argv, myid);
+    if (parse_rc != 0) {
+        MPI_Finalize();
+        return (parse_rc == 1) ? 0 : parse_rc;
+    }
+    RecomputeDerivedParams();
 
-	MPI_Init(&argc, &argv);
-	fftw_mpi_init();
-	MPI_Comm_rank(MPI_COMM_WORLD, & myid);
-	MPI_Comm_size(MPI_COMM_WORLD, & numprocs);
+    if (!PFC_SetupOutputDir(output_dir, myid)) {
+        MPI_Finalize();
+        return 2;
+    }
 
-	const int parse_rc = ParseArgs(argc, argv, myid);
-	if (parse_rc != 0) {
-	    MPI_Finalize();
-	    return (parse_rc == 1) ? 0 : parse_rc;
-	}
+    ofstream checkpoint_log;
+    if (myid == 0) {
+        cerr << "CVD Run config: "
+             << "u0=" << u0 << " con0=" << con0 << " sig=" << sig
+             << " dt=" << dt << " dx=" << dx
+             << " steps=" << total_steps << " mod=" << mod
+             << " seed=" << base_seed
+             << " grid=(" << L << "," << M << "," << N << ")"
+             << " outdir=" << (output_dir.empty() ? "." : output_dir)
+             << endl;
 
-	if (!PFC_SetupOutputDir(output_dir, myid)) {
-	    MPI_Finalize();
-	    return 2;
-	}
+        ofstream run_cfg("run_config.txt", ios::out | ios::trunc);
+        if (run_cfg.is_open()) {
+            run_cfg << "model cvd\n";
+            run_cfg << "u0 " << u0 << "\n";
+            run_cfg << "con0 " << con0 << "\n";
+            run_cfg << "sig " << sig << "\n";
+            run_cfg << "dt " << dt << "\n";
+            run_cfg << "dx " << dx << "\n";
+            run_cfg << "steps " << total_steps << "\n";
+            run_cfg << "mod " << mod << "\n";
+            run_cfg << "seed " << base_seed << "\n";
+            run_cfg << "L " << L << "\n";
+            run_cfg << "M " << M << "\n";
+            run_cfg << "N " << N << "\n";
+            run_cfg.close();
+        }
 
-	if (myid == 0) {
-	    cerr
-	        << "Run config: "
-	        << "u0=" << u0 << " con0=" << con0 << " sig=" << sig
-	        << " dt=" << dt << " dx=" << dx
-	        << " steps=" << total_steps << " mod=" << mod
-	        << " seed=" << base_seed
-	        << " grid=(" << L << "," << M << "," << N << ")"
-	        << " grain=(" << grainx << "," << grainy << "," << grainz << ")"
-	        << " axx=" << axx << " b0=" << b0
-	        << " outdir=" << (output_dir.empty() ? "." : output_dir)
-	        << endl;
+        checkpoint_log.open("checkpoint_timestamps.txt", ios::out | ios::trunc);
+        if (checkpoint_log.is_open()) {
+            checkpoint_log << "# Checkpoint timestamps - Step number and milliseconds since epoch" << endl;
+        }
+    }
 
-	    ofstream run_cfg("run_config.txt", ios::out | ios::trunc);
-	    if (run_cfg.is_open()) {
-	        run_cfg << "u0 " << u0 << "\n";
-	        run_cfg << "con0 " << con0 << "\n";
-	        run_cfg << "sig " << sig << "\n";
-	        run_cfg << "dt " << dt << "\n";
-	        run_cfg << "dx " << dx << "\n";
-	        run_cfg << "steps " << total_steps << "\n";
-	        run_cfg << "mod " << mod << "\n";
-	        run_cfg << "seed " << base_seed << "\n";
-	        run_cfg << "L " << L << "\n";
-	        run_cfg << "M " << M << "\n";
-	        run_cfg << "N " << N << "\n";
-	        run_cfg << "grainx " << grainx << "\n";
-	        run_cfg << "grainy " << grainy << "\n";
-	        run_cfg << "grainz " << grainz << "\n";
-	        run_cfg << "axx " << axx << "\n";
-	        run_cfg << "b0 " << b0 << "\n";
-	        run_cfg.close();
-	    }
 
-	    checkpoint_log.open("checkpoint_timestamps.txt", ios::out | ios::trunc);
-	    if (checkpoint_log.is_open()) {
-	        checkpoint_log << "# Checkpoint timestamps - Step number and milliseconds since epoch" << endl;
-	    } else {
-	        cerr << "Warning: Failed to open checkpoint_timestamps.txt for writing" << endl;
-	    }
-	}
-
-	alloc_local = fftw_mpi_local_size_3d(L, M, N,MPI_COMM_WORLD,&local_n0, &local_0_start);
+alloc_local = fftw_mpi_local_size_3d(L, M, N,MPI_COMM_WORLD,&local_n0, &local_0_start);
 phi = (fftw_complex *) fftw_malloc(sizeof(fftw_complex) * alloc_local);
 con = (fftw_complex *) fftw_malloc(sizeof(fftw_complex) * alloc_local);
 phiHat = (fftw_complex *) fftw_malloc(sizeof(fftw_complex) * alloc_local);
@@ -460,21 +357,46 @@ for (int m=M/2+1; m <M; m ++)	krefm[m]=(m-M)*2.0*pi/(M*dx);
 for (int n=0; n <N/2+1; n ++) 	krefn[n]=n*2.0*pi/(N*dx);	
 for (int n=N/2+1; n <N; n ++)	krefn[n]=(n-N)*2.0*pi/(N*dx);
 
-INITIAL_dis(phi,con,local_0_start,local_n0,myid,numprocs);  
+
+
+kd=-1;
+
+//for(int tt=0; tt<1; tt++){      //*
+    
+//sig=0.01*tt;
+
 C2AK(C2AHat,local_n0,local_0_start);
 C2BK(C2BHat,local_n0,local_0_start);
 
-sVTKwriteBianry(phi,local_n0,local_0_start,myid,numprocs);
-PVTKWRITE(local_n0,numprocs,0,N,Pname);
-sVTKwriteBianryc(con,local_n0,local_0_start,myid,numprocs);
-PVTKWRITEC(local_n0,numprocs,0,N,Pnamec);
 
-    const int progress_every = std::max(1, total_steps / 200);
 
-	for(int t=0;t<total_steps; t++){
+//for(int ttt=50;ttt<(TTT+1);ttt++){ // ttt
 
-    kd=t;
+	//con0=1.0E-10+0.01*ttt;
 
+INITIAL_C2(phi,con,local_0_start,local_n0);  
+
+//READPHIVTIN(phi,local_n0,myid);
+//READPHIVTIC(con,local_n0,myid);
+
+
+
+kd=-1;
+
+
+
+
+for(int t=0;t<total_steps; t++){  //*
+	kd=kd+1;
+
+    // Report progress to GUI
+    if (myid == 0) {
+        fprintf(stderr, "PFC_PROGRESS step=%d total=%d\n", t+1, total_steps);
+        fflush(stderr);
+    }
+
+
+	//for(int tttt=0;tttt<50;tttt++){ //***
 	UPDATEINN3(in1,phi,local_n0);
     UPDATEINFMIX(in2,con,local_n0);
 	fftw_execute(p1);//phi-->phiHat     
@@ -484,11 +406,11 @@ PVTKWRITEC(local_n0,numprocs,0,N,Pnamec);
 	fftw_execute(p8);//out(non_phi^3Hat)
 	fftw_execute(p9);//out(non_con^3Hat)
 	fftw_execute(p6);//con-->conHat
-   // MAINEQUATIONC2MIX(phiHat,conHat,outn,outc,local_n0,local_0_start);
+    MAINEQUATIONC2MIX(phiHat,conHat,outn,outc,local_n0,local_0_start);
 
-    Gauss(nois,local_n0,local_0_start,myid,t);   //
-    fftw_execute(p5);//nois--->noisf           //
-    MAINEQUATIONC2_NOI(phiHat,conHat,outn,outc,noisf,local_n0,local_0_start);
+   // Gauss(nois,local_n0,local_0_start,myid);   //����
+   // fftw_execute(p5);//nois--->noisf           //����
+   // MAINEQUATIONC2_NOI(phiHat,conHat,outn,outc,noisf,local_n0,local_0_start);
 
     UPDATEINC2GRA(pe12, pe13, pe14, gra1, gra2, gra3, grao1, grao2, grao3, conHat, grac, krefl, krefm, krefn, local_n0);
  
@@ -498,39 +420,82 @@ PVTKWRITEC(local_n0,numprocs,0,N,Pnamec);
 
 //-------------------------------------------------------------------------------------------------------
 	UPDATEINFCMIX(p10,p11,in3,C2AHat,C2BHat,phiHat,c2adenp,c2bdenp,c2aden,c2bden,con,local_n0);
+//	         } //***tttt
+
+	if ((t % mod) == 0) {
+		// if(t==500) {sig=0.02;mod=5000;INITIAL_con(con,local_n0);}
+		//phimax_atmposi(phi, local_n0, local_0_start, myid, numprocs);
+		sVTKwriteBianry(phi, local_n0, local_0_start, myid, numprocs);
+		PVTKWRITE(local_n0, numprocs, 0, N, Pname);
+		sVTKwriteBianryc(con, local_n0, local_0_start, myid, numprocs);
+		PVTKWRITEC(local_n0, numprocs, 0, N, Pnamec);
+	}
+
+      ENERGYC2(p4, phi, con,conHat,in3,in,grac, out,enei,EEsum,DSsum,local_n0,local_0_start,myid, numprocs);
+
+
+
+/*if(fabs(energySum-EE_sum)>1.0E-5)
+	{  
+	    EE_sum=energySum;		
+	}
+	else 
+	{
+		break;
+	}*/
+} //* t
+//��������Сֵ*************************************
+
+
+ //enERgy[ttt]=energySum;
+
+             // char *file2;
+             // file2="phi_";
+           // if (myid==0) {PVTKWRITE(local_n0,numprocs,file2);} 
+             //  sVTKwriteBianry(phi,local_n0,local_0_start,myid,numprocs,file2);
+
+            //  file2="con_";
+           // if (myid==0) { PVTKWRITE(local_n0,numprocs,file2);} 
+             //  sVTKwriteBianry(con,local_n0,local_0_start,myid,numprocs,file2); 
 
 
 
 
-            const int output_step = t + 1;
-            if (myid == 0 && (output_step == 1 || output_step % progress_every == 0 || output_step == total_steps)) {
-                cout << "PFC_PROGRESS step=" << output_step << " total=" << total_steps << endl;
-            }
-            if ((output_step % mod) == 0 || output_step == total_steps) {
-// if(t==500) {sig=0.02;mod=5000;INITIAL_con(con,local_n0);}
-                kd = output_step;
-				phimax_atmposi(phi, con, local_n0, local_0_start, myid, numprocs);
-				//sVTKwriteBianry(phi, local_n0, local_0_start, myid, numprocs);
-				//PVTKWRITE(local_n0, numprocs, 0, N, Pname);
-				//sVTKwriteBianryc(con, local_n0, local_0_start, myid, numprocs);
-				//PVTKWRITEC(local_n0, numprocs, 0, N, Pnamec);
+//} //ttt con
 
-				// Write checkpoint timestamp (rank 0 only)
-				if (myid == 0 && checkpoint_log.is_open()) {
-				    const auto now = std::chrono::system_clock::now();
-				    const auto timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-				        now.time_since_epoch()).count();
-				    checkpoint_log << "step " << output_step << " timestamp_ms " << timestamp_ms << endl;
-				    checkpoint_log.flush();
-				}
-            }
 
-}
 
-// Close checkpoint log file (rank 0 only)
-if (myid == 0 && checkpoint_log.is_open()) {
-    checkpoint_log.close();
-}
+
+ //  sprintf(filename,"%s%d%s", "B_",int(100*sig),".txt");
+
+	//ofstream outf(filename,ios_base::out);
+ //   outf.setf(ios_base::fixed,ios_base::floatfield);
+ //   outf.precision(5);
+	////outf<<"sig="<<sig<<endl;
+ //   for(int lll=50;lll<TTT+1;lll++) { outf<<0.01*lll<<" "<<enERgy[lll]<<endl;}
+ //   outf.close(); 
+
+//energy out<<
+
+
+
+
+
+
+
+
+
+
+
+//}  //* sig
+
+
+
+
+
+
+
+          
 
 fftw_destroy_plan(p1);
 fftw_destroy_plan(p2);
@@ -547,42 +512,43 @@ fftw_destroy_plan(pe12);
 fftw_destroy_plan(pe13);
 fftw_destroy_plan(pe14);
 
-fftw_free(phi);
-fftw_free(phiHat);
-fftw_free(in);
-fftw_free(out);
-fftw_free(C2Hat);
-fftw_free(C2AHat);
-fftw_free(C2BHat);
-fftw_free(nois);
-fftw_free(noisf);
-fftw_free(enei);
-fftw_free(phiHatPow);
-fftw_free(phiHati);
-fftw_free(enei_ave);
-fftw_free(phiave);
-fftw_free(con);
-fftw_free(conHat);
-fftw_free(inn);
-fftw_free(inc);
-fftw_free(in1);
-fftw_free(in2);
-fftw_free(in3);
-fftw_free(outn);
-fftw_free(outc);
-fftw_free(conave);
-fftw_free(c2bden);
-fftw_free(c2adenp);
-fftw_free(c2aden);
-fftw_free(c2bdenp);
-fftw_free(gra1);
-fftw_free(gra2);
-fftw_free(gra3);
-fftw_free(grao1);
-fftw_free(grao2);
-fftw_free(grao3);
-fftw_free(grac);
+free(phi);
+free(phiHat);
+free(in);
+free(out);
+free(C2Hat);
+free(C2AHat);
+free(C2BHat);
+free(nois);
+free(noisf);
+free(enei);
+free(phiHatPow);
+free(phiHati);
+free(enei_ave);
+free(phiave);
+free(con);
+free(conHat);
+free(inn);
+free(inc);
+free(in1);
+free(in2);
+free(in3);
+free(outn);
+free(outc);
+free(conave);
+free(c2bden);
+free(c2adenp);
+free(c2aden);
+free(c2bdenp);
+free(gra1);
+free(gra2);
+free(gra3);
+free(grao1);
+free(grao2);
+free(grao3);
+free(grac);
 
+MPI_Finalize();
 return 0;
 }
 
@@ -604,81 +570,68 @@ static void INITIAL_con(fftw_complex *dcon,int dlocal_n0){
 
 
 
-static void INITIAL_dis(fftw_complex* dphi, fftw_complex* dcon, int dlocal_0_start, int dlocal_n0, int dmyid, int dnumprocs) {
-	int lx, x, y, z, X, Y, Z; float xx, yy, zz;
-	float A1 = 0.1427, A2 = 0.106;
-	float r1, cut1, cut2, qb, theta, k00, r2, k0;;
-	double iseed_radia = 20., v1, v2;
-	float center_x, center_y, center_z;
-	const int seed_m_max = std::min(M, 160);
 
-	for (int l = 0; l < dlocal_n0; l++) {
-		for (int m = 0; m < M; m++) {
-			for (int n = 0; n < N; n++) {
-			//	lx = l + dlocal_0_start;
-				
-				dphi[n + N * (m + M * l)][0] = u0;
-				dphi[n + N * (m + M * l)][1] = 0;
-			//	dcon[n + N * (m + M * l)][0] = con0+0.15*cos(2*pi*lx/80);
-			    dcon[n + N * (m + M * l)][0] = con0;
-				dcon[n + N * (m + M * l)][1] = 1.0E-10;
+
+
+
+
+
+static void INITIAL_C2(fftw_complex *dphi,fftw_complex *dcon,int dlocal_0_start, int dlocal_n0){
+    float x, y, z;
+	float A1=0.15,A2=0.106; 
+	 float r1,w1,w2,w3;
+     w1=0.;w2=0.;w3=0.*pi/180;
+
+
+   for(int l=0; l <dlocal_n0; l ++){
+	   for (int m=0; m <M; m ++){
+		for (int n=0; n <N; n ++) {
+                  x=(dlocal_0_start-L/2+l)*dx;
+                  y=(m-M/2)*dx;
+                  z=(n-N/2)*dx;
+                  dphi[n+N*(m+M*l)][1]=0;
+				  dcon[n+N*(m+M*l)][1]=1.0E-10;
+		//-----------------------------------------------------------------------------------------------------
+	
+            //����
+			//dphi[n+N*(m+M*l)][0]=u0+A1*(cos(ka0*l*dx)+2*cos(ka0*l*dx/2)*cos(ka0*sqrt(3.)*m*dx/2));
+            
+		    //�ķ�
+               // dphi[n+N*(m+M*l)][0]=2*A1*(cos(ka0*x*cos(w3)+ka0*y*sin(w3))+cos(-x*ka0*sin(w3)+ka0*y*cos(w3)))+4*A2*cos(ka0*x*cos(w3)+ka0*y*sin(w3))*cos(-x*ka0*sin(w3)+y*ka0*cos(w3))+u0; 
+		
+
+		
+
+
+//-----------------------------------------------------------------------------------------------------
+		//for B
+	
+            //����
+			//dphi[n+N*(m+M*l)][0]=u0+A1*(cos(kb0*l*dx)+2*cos(kb0*l*dx/2)*cos(kb0*sqrt(3.)*m*dx/2));
+           
+			//�ķ�
+				  if (m < M/2) {
+					  dphi[n + N*(m + M*l)][0] = 2 * A1*(cos(ka0*x*cos(w3) + ka0*y*sin(w3)) + cos(-x*ka0*sin(w3) + ka0*y*cos(w3))) + 4 * A2*cos(ka0*x*cos(w3) + ka0*y*sin(w3))*cos(-x*ka0*sin(w3) + y*ka0*cos(w3)) + u0;
+					  dcon[n + N*(m + M*l)][0] = con0;
+					  				  }
+				  else {
+					  dphi[n + N*(m + M*l)][0] = 2 * A1*(cos(kb0*x*cos(w3) + kb0*y*sin(w3)) + cos(-x*kb0*sin(w3) + kb0*y*cos(w3))) + 4 * A2*cos(kb0*x*cos(w3) + kb0*y*sin(w3))*cos(-x*kb0*sin(w3) + y*kb0*cos(w3)) + u0;
+					  dcon[n + N*(m + M*l)][0] =1-con0;
+				  }
+       // dphi[n+N*(m+M*l)][0]=2*A1*(cos(kb0*x*cos(w3)+kb0*y*sin(w3))+cos(-x*kb0*sin(w3)+kb0*y*cos(w3)))+4*A2*cos(kb0*x*cos(w3)+kb0*y*sin(w3))*cos(-x*kb0*sin(w3)+y*kb0*cos(w3))+u0; 	
+
+       		//dcon[n+N*(m+M*l)][0]=con0;
+        //-----------------------------------------------------------------------------------------------------
+
+
 			}
-		}
-	}
-
-	for (int iii = 0; iii < grainx; iii++) {
-		for (int jjj = 0; jjj < grainy; jjj++) {
-			for (int kkk = 0; kkk < grainz; kkk++) {
-
-				center_x = dnx * iii + dnx / 2; center_y = dny * jjj + dny / 2; center_z = dnz * kkk + dnz / 2;
+	   }
+	}  
 
 
-					const unsigned int center_sum = static_cast<unsigned int>((dnx * iii + dnx / 2) + (dny * jjj + dny / 2) + (dnz * kkk + dnz / 2));
-					uint64_t rng_state = static_cast<uint64_t>(base_seed ^ (center_sum * 2654435761u));
-					v1 = 80.0 * (rng_u01(rng_state) - 0.5);
-					v2 = rng_u01(rng_state) / 10.0;
 
-				theta = v1 * pi / 180;
 
-				float ang[2][9] = { { cos(theta),-sin(theta),0,sin(theta),cos(theta),0,0,0,1 },{ 1,0,0,0,cos(theta),-sin(theta),0,sin(theta),cos(theta) } }; //theta=0,10,20,30,45,22.5
-
-				for (int l = 0; l < dlocal_n0; l++) {
-					for (int m = 0; m < seed_m_max; m++) {
-						for (int n = 0; n < N; n++) {
-							lx = l + dlocal_0_start;
-							x = (dlocal_0_start + l - L / 2);
-							y = (m + 1 - M / 2);
-							z = (n + 1 - N / 2);
-
-							xx = (dlocal_0_start - center_x + l) * dx;
-							yy = (m - center_y) * dx;
-							zz = (n - center_z) * dx;
-							r1 = sqrt(xx * xx + yy * yy + zz * zz);
-
-							//  X=ang[0][0]*xx+ang[0][1]*yy+ang[0][2]*zz;
-							//  Y=ang[0][3]*xx+ang[0][4]*yy+ang[0][5]*zz;
-							//  Z=ang[0][6]*xx+ang[0][7]*yy+ang[0][8]*zz;
-
-							X = lx * cos(theta) + m * cos(pi / 2 - theta - (iii + jjj + kkk) * pi);
-							Y = m * cos(theta) - lx * cos(pi / 2 - theta - (iii + jjj + kkk) * pi);
-							Z = n;
-
-							// if (kkk == 0 || kkk == 2) {
-								// X = lx;
-								// Y = m*cos(theta) + n*cos(pi / 2 - theta - (iii + jjj + kkk)*pi);
-								// Z = n*cos(theta) - m*cos(pi / 2 - theta - (iii + jjj + kkk)*pi);
-							// }
-
-							if (std::fabs(xx) < (L * dx / grainx / 2. - 0.2) && std::fabs(yy) < (M * dx / grainy / 2. - 0.2) && std::fabs(zz) < 4.3) dphi[n + N * (m + M * l)][0] = 2 * A1 * (cos(((1-con0)*ka0+con0*kb0) * X * dx) + cos(((1-con0)*ka0+con0*kb0) * Y * dx)) + 4 * A2 * cos(((1-con0)*ka0+con0*kb0) * X * dx) * cos(((1-con0)*ka0+con0*kb0) * Y * dx) + u0;
-						}
-					}
-				}
-			}
-		}
-	}
 }
-
-
 
 static void UPDATECOEF(fftw_complex *dphi,fftw_complex *dcon,int dlocal_n0) {
         for (int l=0; l <dlocal_n0; l ++){
@@ -712,7 +665,7 @@ static void C2AK(float *dC2AHat , int dlocal_n0, int dlocal_0_start){
              if(sqrt(ks(lnew,m,n,krefl,krefm,krefn))>kc1) dC2AHat[n+N*(m+M*l)]=exp(-pow(sig/sigMa2,2))*exp(-pow(sqrt(ks(lnew,m,n,krefl,krefm,krefn))-ka2,2)/(2*gaa2*gaa2));
 
 	
-			//dC2AHat[n+N*(m+M*l)]=exp(-pow(sig/sigMa1,2))*exp(-pow( sqrt(ks(lnew,m,n,krefl,krefm,krefn))-ka1,2)/(2*gaa1*gaa1))+exp(-pow(sig/sigMa2,2))*exp(-pow( sqrt(ks(lnew,m,n,krefl,krefm,krefn))-ka2,2)/(2*gaa2*gaa2) )+epsilona;
+			// dC2AHat[n+N*(m+M*l)]=exp(-pow(sig/sigMa1,2))*exp(-pow( sqrt(ks(lnew,m,n,krefl,krefm,krefn))-ka1,2)/(2*gaa1*gaa1)); //+exp(-pow(sig/sigMa2,2))*exp(-pow( sqrt(ks(lnew,m,n,krefl,krefm,krefn))-ka2,2)/(2*gaa2*gaa2) )+epsilona;
 	
 		   }
 		}
@@ -725,7 +678,7 @@ static void C2BK(float *dC2BHat, int dlocal_n0, int dlocal_0_start){
 
          float kc2,aa1,aa2,bb1,bb2;
          aa1=pow(sig/sigMb1,2);  aa2=pow(sig/sigMb2,2);
-               bb1=1./(2.*gab1*gab1); bb2=1./(2.*gab2*gab2); 
+                bb1=1./(2.*gab1*gab1); bb2=1./(2.*gab2*gab2); 
                 kc2=((bb1*kb1-bb2*kb2)+sqrt(pow(bb1*kb1-bb2*kb2,2)-(bb1-bb2)*(aa1-aa2+bb1*kb1*kb1-bb2*kb2*kb2)))/(bb1-bb2);
               if (gab1==gab2) kc2=(aa2-aa1+bb1*(kb2*kb2-kb1*kb1))/(2*bb1*(kb2-kb1)); 
 
@@ -738,31 +691,10 @@ static void C2BK(float *dC2BHat, int dlocal_n0, int dlocal_0_start){
            if(sqrt(ks(lnew,m,n,krefl,krefm,krefn))>kc2)  dC2BHat[n+N*(m+M*l)]=exp(-pow(sig/sigMb2,2))*exp(-pow(sqrt(ks(lnew,m,n,krefl,krefm,krefn))-kb2,2)/(2*gab2*gab2));
 
 	
-			// dC2BHat[n + N*(m + M*l)] = exp(-pow(sig / sigMb1, 2))*exp(-pow(sqrt(ks(lnew, m, n, krefl, krefm, krefn)) - kb1, 2) / (2 * gab1*gab1));
+	// dC2BHat[n+N*(m+M*l)]=exp(-pow(sig/sigMb1,2))*exp(-pow( sqrt(ks(lnew,m,n,krefl,krefm,krefn))-kb1,2)/(2*gab1*gab1) ); //+exp(-pow(sig/sigMb2,2))*exp(-pow( sqrt(ks(lnew,m,n,krefl,krefm,krefn))-kb2,2)/(2*gab2*gab2) )+epsilonb;
 
 	
 		   }
-		}
-	}
-}
-
-
-static void C2BKtri(float *dC2BHat, int dlocal_n0, int dlocal_0_start) {
-	int lnew;
-
-	for (int l = 0; l <dlocal_n0; l++) {
-		for (int m = 0; m <M; m++) {
-			for (int n = 0; n <N; n++) {
-				lnew = l + dlocal_0_start;
-
-			   dC2BHat[n + N*(m + M*l)] = exp(-pow(sig / sigMb1, 2))*exp(-pow(sqrt(ks(lnew, m, n, krefl, krefm, krefn)) - kb1, 2) / (2 * gab1*gab1));
-				
-
-
-				//dC2BHat[n + N*(m + M*l)] = exp(-pow(sig / sigMb1, 2))*exp(-pow(sqrt(ks(lnew, m, n, krefl, krefm, krefn)) - kb1, 2) / (2 * gab1*gab1))+exp(-pow(sig/sigMb2,2))*exp(-pow( sqrt(ks(lnew,m,n,krefl,krefm,krefn))-kb2,2)/(2*gab2*gab2) )+epsilonb;
-
-
-			}
 		}
 	}
 }
@@ -945,15 +877,13 @@ static void MAINEQUATIONC2MIX(fftw_complex *dphiHat,fftw_complex *dconHat, fftw_
 	}
 }
 
-static void Gauss(fftw_complex *dnois,int dlocal_n0,int dlocal_0_start, int dmyid, int timestep){
-	   float iseed_radia=20.;
-	   float r,v1,v2,f,ra,x,y,z;
-	     uint64_t rng_state = static_cast<uint64_t>(base_seed);
-	     rng_state ^= static_cast<uint64_t>(static_cast<unsigned int>(dmyid + 1)) * 2654435761ULL;
-	     rng_state ^= static_cast<uint64_t>(static_cast<unsigned int>(timestep)) * 374761393ULL;
-	for(int l=0; l <dlocal_n0; l ++){
-	 for (int m=0; m <M; m ++){
-	     for (int n=0; n <N; n ++) {
+static void Gauss(fftw_complex *dnois,int dlocal_n0,int dlocal_0_start, int dmyid){
+   float iseed_radia=20.;
+   float r,v1,v2,f,ra,x,y,z;
+		 srand((unsigned int)time(0)*(dmyid+1));
+for(int l=0; l <dlocal_n0; l ++){
+ for (int m=0; m <M; m ++){
+     for (int n=0; n <N; n ++) {
 	//	 if(((dlocal_0_start+l+1-L/2)*(dlocal_0_start+l+1-L/2)+(m+1-M/2)*(m+1-M/2))<32*32){
                   x=(dlocal_0_start+l+1-L/2)*dx;
                   y=(m+1-M/2)*dx;
@@ -961,15 +891,16 @@ static void Gauss(fftw_complex *dnois,int dlocal_n0,int dlocal_0_start, int dmyi
                   ra=sqrt(x*x+y*y+z*z);
         
 				  
-	        r = 2.0f;
-	        while (r >= 1.0f || r <= 0.0f) {
-	            v1 = static_cast<float>(rng_u11(rng_state));
-	            v2 = static_cast<float>(rng_u11(rng_state));
-	            r = v1 * v1 + v2 * v2;
-	        }
-	          f=sqrt(-2.*log(r)/r);
-	          dnois[n+N*(m+M*l)][0]=f*v1;
-	          dnois[n+N*(m+M*l)][1]=0.0;
+        r=2.; 
+        while (r>1) 
+		{ 
+         v1=2*float(rand())/RAND_MAX-1;
+         v2=2*float(rand())/RAND_MAX-1;
+         r=v1*v1+v2*v2;
+		}
+          f=sqrt(-2.*log(r)/r);
+          dnois[n+N*(m+M*l)][0]=f*v1;
+          dnois[n+N*(m+M*l)][1]=0.0;
 	//	 }
 
 }
@@ -996,8 +927,8 @@ static void MAINEQUATIONC2_NOI(fftw_complex *dphiHat,fftw_complex *dconHat, fftw
 					/*b0=sqrt(axx/dx/dx/dt);
 					if(dsmooth_phi[n+N*(m+M*l)][0]<phi_solid){b0=0.0;}*/
 
-	                Rhat1=dphiHat[n+N*(m+M*l)][0]-dynamic_mn*dt*ks(lnew,m,n,krefl,krefm,krefn)*doutn[n+N*(m+M*l)][0]+dt*b0*dnoisf[n+N*(m+M*l)][0]*sqrt(ks(lnew,m,n,krefl,krefm,krefn))*sqrt(std::fabs(0.5+0.5*(detrx+detrxn)*(detry+detryn)))*(0.5-0.5*tanh((sqrt(ks(lnew,m,n,krefl,krefm,krefn))-2.0*pi)/0.1));
-	                Rhat2=dphiHat[n+N*(m+M*l)][1]-dynamic_mn*dt*ks(lnew,m,n,krefl,krefm,krefn)*doutn[n+N*(m+M*l)][1]+dt*b0*dnoisf[n+N*(m+M*l)][1]*sqrt(ks(lnew,m,n,krefl,krefm,krefn))*sqrt(std::fabs(0.5-0.5*(detrx+detrxn)*(detry+detryn)))*(0.5-0.5*tanh((sqrt(ks(lnew,m,n,krefl,krefm,krefn))-2.0*pi)/0.1));
+	                Rhat1=dphiHat[n+N*(m+M*l)][0]-dynamic_mn*dt*ks(lnew,m,n,krefl,krefm,krefn)*doutn[n+N*(m+M*l)][0]+dt*b0*dnoisf[n+N*(m+M*l)][0]*sqrt(ks(lnew,m,n,krefl,krefm,krefn))*sqrt(abs(0.5+0.5*(detrx+detrxn)*(detry+detryn)))*(0.5-0.5*tanh((sqrt(ks(lnew,m,n,krefl,krefm,krefn))-2.0*pi)/0.1));
+	                Rhat2=dphiHat[n+N*(m+M*l)][1]-dynamic_mn*dt*ks(lnew,m,n,krefl,krefm,krefn)*doutn[n+N*(m+M*l)][1]+dt*b0*dnoisf[n+N*(m+M*l)][1]*sqrt(ks(lnew,m,n,krefl,krefm,krefn))*sqrt(abs(0.5-0.5*(detrx+detrxn)*(detry+detryn)))*(0.5-0.5*tanh((sqrt(ks(lnew,m,n,krefl,krefm,krefn))-2.0*pi)/0.1));
                         dphiHat[n+N*(m+M*l)][0]=Rhat1/(1.0+dynamic_mn*dt*ks(lnew,m,n,krefl,krefm,krefn));
 	                    dphiHat[n+N*(m+M*l)][1]=Rhat2/(1.0+dynamic_mn*dt*ks(lnew,m,n,krefl,krefm,krefn));
 
@@ -1017,7 +948,7 @@ static void DAT(fftw_complex *dphi,fftw_complex *dcon,int dmyid,int dnumprocs,in
 
 
 //OUTPUT phi.dat
-  float *temp2, *rbuf2=nullptr;
+  float *temp2, *rbuf2;
   if ( dmyid == 0) {rbuf2= (float *) fftw_malloc(sizeof(float)*L*M*N);} 
   temp2= (float *) fftw_malloc(sizeof(float) * M*N*(dlocal_n0)); 
   for (int l=0; l <dlocal_n0; l ++)  for (int m=0; m<M; m++) for (int n=0; n <N; n ++) {temp2[n+N*(m+M*l)]=dphi[n+N*(m+M*l)][0];}
@@ -1031,9 +962,9 @@ static void DAT(fftw_complex *dphi,fftw_complex *dcon,int dmyid,int dnumprocs,in
 	outf4<<"zone t=\"big zone\""<<",i="<<L<<",j="<<M<<",k="<<N<<",f=point"<<endl;//dat
     for(int n=0; n <N; n ++)for(int m=0; m <M; m ++)for(int l=0; l <L; l ++) {outf4<<rbuf2[n+N*(m+M*l)]<<endl;}
     outf4.close(); 
-  }
-  fftw_free(temp2);
-  if (dmyid == 0) { fftw_free(rbuf2); }
+free(temp2);
+free(rbuf2);   
+  } 
 }
 
 
@@ -1052,9 +983,9 @@ static void ENERGYC2(fftw_plan pe, fftw_complex *dphi, fftw_complex *dcon,fftw_c
            energy_mix=(dphi[n+N*(m+M*l)][0]+1.0)*para_w*(dcon[n+N*(m+M*l)][0]*log(dcon[n+N*(m+M*l)][0]/para_c0)+(1.0-dcon[n+N*(m+M*l)][0])*log((1.0-dcon[n+N*(m+M*l)][0])/(1.0-para_c0)));
 		   energy_ex=0.5*dphi[n+N*(m+M*l)][0]*(din3[n+N*(m+M*l)][0])+para_alpha*dgrac[n+N*(m+M*l)][0];
 	
-		              denei[n+N*(m+M*l)]=energy_id+energy_mix+energy_ex;//CPUÿһ        
+		              denei[n+N*(m+M*l)]=energy_id+energy_mix+energy_ex;//����CPUÿһ���������        
 		              dEEsum += denei[n+N*(m+M*l)];//*dx*dx*dx;                   
-                      dDSsum += dphi[n+N*(m+M*l)][0]; //CPUܶ
+                      dDSsum += dphi[n+N*(m+M*l)][0]; //����CPU�ܶ����
 
 	        }
 	    }
@@ -1081,6 +1012,17 @@ static void ENERGYC2(fftw_plan pe, fftw_complex *dphi, fftw_complex *dcon,fftw_c
     ofstream wafile("energy.txt",ios_base::out|ios_base::app);
 	wafile << kd << " " << sum_enei/L/M/N <<" "<<sum_dens/L/M/N  <<endl;
 }
+
+
+MPI_Bcast(&energySum, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+
+
+
+
+
+
+
 
 delete [] rcounts;
 delete [] rcounts1;
@@ -1130,7 +1072,7 @@ static void atompositionCFGC2(fftw_complex *dphi,int dlocal_n0,int dlocal_0_star
    }
 
    float pii;
-   MPI_Allreduce(&phimax,&pii,1,MPI_FLOAT,MPI_MAX,MPI_COMM_WORLD);//н̽һȡֵԼΪpii
+   MPI_Allreduce(&phimax,&pii,1,MPI_FLOAT,MPI_MAX,MPI_COMM_WORLD);//�����н��̽���һ��ȡ���ֵ��?������Ϊpii
    phic=u0+(pii-u0)*phi_rat; 
 
    ofstream ophimax("phimax.txt",ios_base::out|ios_base::app);
@@ -1144,14 +1086,14 @@ static void atompositionCFGC2(fftw_complex *dphi,int dlocal_n0,int dlocal_0_star
        buf[n+N*(m+M*l)]=0;
    }
    for(int l=1; l <dlocal_n0+1; l ++) for (int m=0; m <M; m ++) for(int n=0; n <N; n ++){
-       buf[n+N*(m+M*l)]=dphi[n+N*(m+M*(l-1))][0];//ƽl
+       buf[n+N*(m+M*l)]=dphi[n+N*(m+M*(l-1))][0];//ƽ����l����
    }
    ophimax<<" buf is done "<<endl;
     if(dmyid==head) {MPI_Sendrecv(&buf[N*M],N*M,MPI_FLOAT,tail,40,&buf[0],N*M,MPI_FLOAT,tail,40,MPI_COMM_WORLD,&stat); }
     if(dmyid==tail) {MPI_Sendrecv(&buf[(dlocal_n0)*N*M],N*M,MPI_FLOAT,head,40,&buf[(dlocal_n0+1)*N*M],N*M,MPI_FLOAT,head,40,MPI_COMM_WORLD,&stat);}
 
-    MPI_Sendrecv(&buf[(dlocal_n0)*M*N],N*M,MPI_FLOAT,right,20,&buf[0],N*M,MPI_FLOAT,left,20,MPI_COMM_WORLD,&stat); //->
-    MPI_Sendrecv(&buf[N*M],N*M,MPI_FLOAT,left,20,&buf[N*M*(dlocal_n0+1)],N*M,MPI_FLOAT,right,20,MPI_COMM_WORLD,&stat);      //<-  
+    MPI_Sendrecv(&buf[(dlocal_n0)*M*N],N*M,MPI_FLOAT,right,20,&buf[0],N*M,MPI_FLOAT,left,20,MPI_COMM_WORLD,&stat); //->������
+    MPI_Sendrecv(&buf[N*M],N*M,MPI_FLOAT,left,20,&buf[N*M*(dlocal_n0+1)],N*M,MPI_FLOAT,right,20,MPI_COMM_WORLD,&stat);      //<-������  
 
     float * temp;
     temp =  (float *) fftw_malloc(sizeof(float) * N*M*(dlocal_n0));
@@ -1281,16 +1223,14 @@ static void atompositionCFGC2(fftw_complex *dphi,int dlocal_n0,int dlocal_0_star
 	GR( rbuf_x,  rbuf_y,  rbuf_z, size_buf);
 	if(kd>=0 && kd%20==0) Q6_GLO( rbuf_x,  rbuf_y,  rbuf_z, size_buf);
    }
-fftw_free(temp);
+free(temp);
 free(pc_x);
 free(pc_y);
 free(pc_z);
 free(rbuf_x);
 free(rbuf_y);
 free(rbuf_z);
-fftw_free(buf);
-free(rcounts);
-free(displs);
+free(buf);
 temp=0;
 pc_x=0;
 pc_y=0;
@@ -1368,8 +1308,8 @@ static void GR(float *drbuf_x, float *drbuf_y, float *drbuf_z, int dsize_buf){
 	   outgr << jj*delr << " " << gr[jj] << " "<< hist[jj] <<" "<< nideal << endl;}
 	outgr.close();
 
-fftw_free(gr);
-fftw_free(hist);
+free(gr);
+free(hist);
 hist=0;
 gr=0;
 }
@@ -1552,18 +1492,17 @@ static void Q6_GLO(float *drbuf_x, float *drbuf_y, float *drbuf_z, int dsize_buf
        outHistQ<<(i+1)*delq<<" "<<histq[i]<<endl;
     outHistQ.close();
 	
-fftw_free(histq);
-fftw_free(rij);
-fftw_free(CoX);
-fftw_free(CoY);
-fftw_free(CoZ);
-fftw_free(Nb);
-fftw_free(theta);
-fftw_free(fai);
-fftw_free(qlm);
-fftw_free(qlmb);
-fftw_free(qlmb_m);
-fftw_free(Ql_L);
+free(rij);
+free(CoX);
+free(CoY);
+free(CoZ);
+free(Nb);
+free(theta);
+free(fai);
+free(qlm);
+free(qlmb);
+free(qlmb_m);
+free(Ql_L);
 //free(gr);
 //free(hist);
 Nb=0;
@@ -1580,229 +1519,362 @@ qlmb_m=0;
 Ql_L=0;
 }
 
-// facto, Ylmtf_r, Ylmtf_c, lg_poly, plgndr are provided by pfc_common.h via #define redirects above.
+// facto provided by pfc_common.h
 
-static void PVTKWRITE(int dlocal_n0,int dnumprocs,int dstartz,int dendz, char *dfilename){
-   char filename[20];
-   char filenames[20];   
-   sprintf(filename, "%s%d%s", dfilename, kd,".pvti");
-   ofstream outfile(filename,ios_base::out);
-   outfile.setf(ios_base::fixed,ios_base::floatfield);
-   outfile.precision(4);
-   outfile << "<?xml version=\"1.0\"?>" << endl;
-   outfile << "<VTKFile type=\"PImageData\" version=\"0.1\" byte_order=\"LittleEndian\">" << endl;
-   outfile << "  <PImageData WholeExtent=\"0 "<<L/RD-1<<" 0 "<<M/RD-1<<" "<<dstartz<< " "<<dendz-1<<"\" GhostLevel=\"#\" Origin=\"0  0  0\"  Spacing=\"1  1  1\">"<<endl;   
-   outfile << "    <PPointData>"<< endl;
-   outfile << "      <PDataArray type=\"Float32\" Name=\"phi\"/>" << endl;
-//   outfile << "      <PDataArray type=\"Float32\" Name=\"enei\"/>" << endl;
-   outfile << "    </PPointData>"<<endl;
-   
-   sprintf(filenames, "%s%d%s%d%s", dfilename, kd,"_",0,".vti");
-   outfile << "    <Piece Extent=\"0 "<<(dlocal_n0/RD)-1<<" 0 "<<M/RD-1<<" "<<dstartz<< " "<<dendz-1<<"\" Source=\""<<filenames<<"\"/>"<<endl;
-   for (int i=1; i<dnumprocs; i ++) {
-   sprintf(filenames, "%s%d%s%d%s", dfilename, kd,"_",i,".vti");
-   outfile << "    <Piece Extent=\""<<i*(dlocal_n0/RD)-1<<"  "<<(i+1)*(dlocal_n0/RD)-1<<" 0 "<<M/RD-1<<" "<<dstartz<< " "<<dendz-1<<"\" Source=\""<<filenames<<"\"/>"<<endl;
-   }
+// Ylmtf_r provided by pfc_common.h
 
-   outfile << "  </PImageData>"<<endl;
-   outfile << "</VTKFile>"<<endl;
-   outfile.close();
+// Ylmtf_c provided by pfc_common.h
+
+// lg_poly provided by pfc_common.h
+
+// plgndr provided by pfc_common.h
+
+//void sVTKwriteBianry(fftw_complex *dphi,int dlocal_n0,int dlocal_0_start,int dmyid,int dnumprocs,char *dfilename){
+//   char filename[20];
+//   sprintf(filename, "%s%d%s%d%s%d%s", dfilename,dmyid,"_",int(100*sig),"_",int(100*con0),".vti");
+//
+//    int startn,endn;
+//   if (dmyid==0){startn=dlocal_0_start; endn=dlocal_0_start+dlocal_n0-1;}
+//   else{startn=dlocal_0_start-1; endn=dlocal_0_start+dlocal_n0-1;}
+//
+//   
+//
+//    MPI_Status stat;
+//   int left=dmyid-1,right=dmyid+1;
+//   float *buf, *temp;
+//   buf = (float *) fftw_malloc(sizeof(float) * M*N*(dlocal_n0+1));
+//   temp= (float *) fftw_malloc(sizeof(float) * M*N*(dlocal_n0));
+//   if (dmyid>0) {left=dmyid-1;}else{left=MPI_PROC_NULL;}
+//   if (dmyid<dnumprocs-1){right=dmyid+1;}else{right=MPI_PROC_NULL;}
+//   for (int l=0; l <dlocal_n0; l ++) for (int m=0; m <M; m ++) for(int n=0; n <N; n ++) {
+//               temp[n+N*(m+M*l)]=dphi[n+N*(m+M*l)][0];
+//        }
+//   MPI_Sendrecv(&temp[N*M*(dlocal_n0-1)],N*M,MPI_FLOAT,right,10,&buf[0],N*M,MPI_FLOAT,left,10,MPI_COMM_WORLD,&stat);
+//
+//
+//   float  treal[N][M][dlocal_n0+1];
+//   int    nvar=1; /* Plot only one variable set */
+//   int    bytes[100], off[100];
+//   off[0]=0;
+//   for (int i=0; i<nvar; i++){
+//    if (dmyid==0){bytes[i]=(N*M*dlocal_n0)*sizeof(float);} else {bytes[i]=(N*M*(dlocal_n0+1))*sizeof(float);}
+//    if (i<nvar-1) off[i+1]=off[i]+sizeof(int)+bytes[i];
+//    bytes[i]=bytes[i]+sizeof(int);
+//   }
+//
+//
+//  FILE * outf_tfield;
+//  outf_tfield=fopen(filename,"w");
+//  fprintf(outf_tfield,"<?xml version=\"1.0\"?>\n");
+//  fprintf(outf_tfield,"<VTKFile type=\"ImageData\" version=\"0.1\"  byte_order=\"LittleEndian\">\n");
+//  fprintf(outf_tfield,"<ImageData WholeExtent=\"%d %d %d %d %d %d\"   Origin=\"%d %d %d\" Spacing=\"%d %d %d\">\n",startn,endn,0,M-1,0,N-1
+//   ,0,0,0,1,1,1);
+//  fprintf(outf_tfield,"<Piece Extent=\"%d %d %d %d %d %d\">\n",startn,endn,0,M-1,0,N-1); 
+//  fprintf(outf_tfield,"<PointData Scalars=\"phi\">\n");
+//  fprintf(outf_tfield,"<DataArray type=\"Float32\" Name=\"phi\"   format=\"appended\" offset=\"%d\" />\n",off[0]); 
+//  fprintf(outf_tfield,"</PointData>\n");
+//  fprintf(outf_tfield,"<CellData>\n");
+//  fprintf(outf_tfield,"</CellData>\n");
+//  fprintf(outf_tfield,"</Piece>\n");
+//  fprintf(outf_tfield,"</ImageData>\n");
+//  fprintf(outf_tfield,"<AppendedData encoding=\"raw\">\n");
+//  fprintf(outf_tfield,"_");
+//
+//  /* Write arrival time field */
+//  fwrite(&bytes[0],sizeof(int),1,outf_tfield);
+//  if (dmyid==0){
+//                 for(int n=0; n<N; n++){
+//                    for(int m=0; m<M; m++){
+//                        for(int l=0; l<dlocal_n0; l++){
+//                            treal[n][m][l]=dphi[n+N*(m+M*l)][0];
+//                            fwrite(&treal[n][m][l],sizeof(float),1,outf_tfield);
+//                         }
+//                     }
+//                 }
+//  } else {
+//                 for(int l=1; l <dlocal_n0+1; l ++) for (int m=0; m <M; m ++) for(int n=0; n <N; n ++){
+//                   buf[n+N*(m+M*l)]=temp[n+N*(m+M*(l-1))];
+//                 }
+//                 for(int n=0; n<N; n++){
+//                    for(int m=0; m<M; m++){
+//                        for(int l=0; l<dlocal_n0+1; l++){
+//                            treal[n][m][l]=buf[n+N*(m+M*l)];
+//                            fwrite(&treal[n][m][l],sizeof(float),1,outf_tfield);
+//                         }
+//                     }
+//                 }
+//  }
+//  fprintf(outf_tfield,"\n");
+//  fprintf(outf_tfield,"</AppendedData>\n");
+//  fprintf(outf_tfield,"</VTKFile>\n");
+//  fclose(outf_tfield);
+//  
+//  free(buf);
+//  free(temp);
+//
+//}
+//
+//
+//
+//void PVTKWRITE(int dlocal_n0,int dnumprocs,char *dfilename){
+//   char filename[20];
+//   char filenames[20];   
+//   sprintf(filename, "%s%d%s%d%s", dfilename, int(100*sig),"_",int(100*con0),".pvti");
+//   ofstream outfile(filename,ios_base::out);
+//   outfile.setf(ios_base::fixed,ios_base::floatfield);
+//   outfile.precision(4);
+//   outfile << "<?xml version=\"1.0\"?>" << endl;
+//   outfile << "<VTKFile type=\"PImageData\" version=\"0.1\" byte_order=\"LittleEndian\">" << endl;
+//   outfile << "  <PImageData WholeExtent=\"0 "<<L/RD-1<<" 0 "<<M/RD-1<<" 0 "<<N/RD-1<<"\" GhostLevel=\"#\" Origin=\"0  0  0\"  Spacing=\"1  1  1\">"<<endl;   
+//   outfile << "    <PPointData>"<< endl;
+//   outfile << "      <PDataArray type=\"Float32\" Name=\"Phi\"/>" << endl;
+////   outfile << "      <PDataArray type=\"Float32\" Name=\"enei\"/>" << endl;
+//   outfile << "    </PPointData>"<<endl;
+//   
+//   sprintf(filenames, "%s%d%s%d%s%d%s", dfilename,0,"_",int(100*sig),"_",int(100*con0),".vti");
+//   outfile << "    <Piece Extent=\"0 "<<(dlocal_n0/RD)-1<<" 0 "<<M/RD-1<<" 0 "<<N/RD-1<<"\" Source=\""<<filenames<<"\"/>"<<endl;
+//   for (int i=1; i<dnumprocs; i ++) {
+//   sprintf(filenames, "%s%d%s%d%s%d%s", dfilename,i,"_",int(100*sig),"_",int(100*con0),".vti");
+//   outfile << "    <Piece Extent=\""<<i*(dlocal_n0/RD)-1<<"  "<<(i+1)*(dlocal_n0/RD)-1<<" 0 "<<M/RD-1<<" 0 "<<N/RD-1<<"\" Source=\""<<filenames<<"\"/>"<<endl;
+//   }
+//
+//   outfile << "  </PImageData>"<<endl;
+//   outfile << "</VTKFile>"<<endl;
+//   outfile.close();
+//
+//}
+
+static void PVTKWRITE(int dlocal_n0, int dnumprocs, int dstartz, int dendz, char *dfilename) {
+	char filename[20];
+	char filenames[20];
+	sprintf(filename, "%s%d%s", dfilename, kd, ".pvti");
+	ofstream outfile(filename, ios_base::out);
+	outfile.setf(ios_base::fixed, ios_base::floatfield);
+	outfile.precision(4);
+	outfile << "<?xml version=\"1.0\"?>" << endl;
+	outfile << "<VTKFile type=\"PImageData\" version=\"0.1\" byte_order=\"LittleEndian\">" << endl;
+	outfile << "  <PImageData WholeExtent=\"0 " << L / RD - 1 << " 0 " << M / RD - 1 << " " << dstartz << " " << dendz - 1 << "\" GhostLevel=\"#\" Origin=\"0  0  0\"  Spacing=\"1  1  1\">" << endl;
+	outfile << "    <PPointData>" << endl;
+	outfile << "      <PDataArray type=\"Float32\" Name=\"phi\"/>" << endl;
+	//   outfile << "      <PDataArray type=\"Float32\" Name=\"enei\"/>" << endl;
+	outfile << "    </PPointData>" << endl;
+
+	sprintf(filenames, "%s%d%s%d%s", dfilename, kd, "_", 0, ".vti");
+	outfile << "    <Piece Extent=\"0 " << (dlocal_n0 / RD) - 1 << " 0 " << M / RD - 1 << " " << dstartz << " " << dendz - 1 << "\" Source=\"" << filenames << "\"/>" << endl;
+	for (int i = 1; i<dnumprocs; i++) {
+		sprintf(filenames, "%s%d%s%d%s", dfilename, kd, "_", i, ".vti");
+		outfile << "    <Piece Extent=\"" << i*(dlocal_n0 / RD) - 1 << "  " << (i + 1)*(dlocal_n0 / RD) - 1 << " 0 " << M / RD - 1 << " " << dstartz << " " << dendz - 1 << "\" Source=\"" << filenames << "\"/>" << endl;
+	}
+
+	outfile << "  </PImageData>" << endl;
+	outfile << "</VTKFile>" << endl;
+	outfile.close();
 
 }
 
-static void sVTKwriteBianry(fftw_complex *dphi,int dlocal_n0,int dlocal_0_start,int dmyid,int dnumprocs){
-   char filename[20];
-   sprintf(filename, "%s%d%s%d%s", "phi_",kd,"_",dmyid,".vti");
+static void sVTKwriteBianry(fftw_complex *dphi, int dlocal_n0, int dlocal_0_start, int dmyid, int dnumprocs) {
+	char filename[20];
+	sprintf(filename, "%s%d%s%d%s", "phi_", kd, "_", dmyid, ".vti");
 
 
-   int startn,endn;
-   if (dmyid==0){startn=dlocal_0_start; endn=dlocal_0_start+dlocal_n0-1;}
-   else{startn=dlocal_0_start-1; endn=dlocal_0_start+dlocal_n0-1;}
+	int startn, endn;
+	if (dmyid == 0) { startn = dlocal_0_start; endn = dlocal_0_start + dlocal_n0 - 1; }
+	else { startn = dlocal_0_start - 1; endn = dlocal_0_start + dlocal_n0 - 1; }
 
 
-   MPI_Status stat;
-   int left=dmyid-1,right=dmyid+1;
-   float *buf, *temp;
-   buf = (float *) fftw_malloc(sizeof(float) * M*N*(dlocal_n0+1));
-   temp= (float *) fftw_malloc(sizeof(float) * M*N*(dlocal_n0));
-   if (dmyid>0) {left=dmyid-1;}else{left=MPI_PROC_NULL;}
-   if (dmyid<dnumprocs-1){right=dmyid+1;}else{right=MPI_PROC_NULL;}
-   for (int l=0; l <dlocal_n0; l ++) for (int m=0; m <M; m ++) for(int n=0; n <N; n ++) {
-               temp[n+N*(m+M*l)]=dphi[n+N*(m+M*l)][0];
-        }
-   MPI_Sendrecv(&temp[N*M*(dlocal_n0-1)],N*M,MPI_FLOAT,right,10,&buf[0],N*M,MPI_FLOAT,left,10,MPI_COMM_WORLD,&stat);
+	MPI_Status stat;
+	int left = dmyid - 1, right = dmyid + 1;
+	float *buf, *temp;
+	buf = (float *)fftw_malloc(sizeof(float) * M*N*(dlocal_n0 + 1));
+	temp = (float *)fftw_malloc(sizeof(float) * M*N*(dlocal_n0));
+	if (dmyid>0) { left = dmyid - 1; }
+	else { left = MPI_PROC_NULL; }
+	if (dmyid<dnumprocs - 1) { right = dmyid + 1; }
+	else { right = MPI_PROC_NULL; }
+	for (int l = 0; l <dlocal_n0; l++) for (int m = 0; m <M; m++) for (int n = 0; n <N; n++) {
+		temp[n + N*(m + M*l)] = dphi[n + N*(m + M*l)][0];
+	}
+	MPI_Sendrecv(&temp[N*M*(dlocal_n0 - 1)], N*M, MPI_FLOAT, right, 10, &buf[0], N*M, MPI_FLOAT, left, 10, MPI_COMM_WORLD, &stat);
 
 
-   int    nvar=1; /* Plot only one variable set */
-   int    bytes[100], off[100];
-   off[0]=0;
-   for (int i=0; i<nvar; i++){
-    if (dmyid==0){bytes[i]=(N*M*dlocal_n0)*sizeof(float);} else {bytes[i]=(N*M*(dlocal_n0+1))*sizeof(float);}
-    if (i<nvar-1) off[i+1]=off[i]+sizeof(int)+bytes[i];
-    bytes[i]=bytes[i]+sizeof(int);
-   }
+	float  treal[N][M][dlocal_n0 + 1];
+	int    nvar = 1; /* Plot only one variable set */
+	int    bytes[100], off[100];
+	off[0] = 0;
+	for (int i = 0; i<nvar; i++) {
+		if (dmyid == 0) { bytes[i] = (N*M*dlocal_n0) * sizeof(float); }
+		else { bytes[i] = (N*M*(dlocal_n0 + 1)) * sizeof(float); }
+		if (i<nvar - 1) off[i + 1] = off[i] + sizeof(int) + bytes[i];
+		bytes[i] = bytes[i] + sizeof(int);
+	}
 
 
-  FILE * outf_tfield;
-  outf_tfield=fopen(filename,"w");
-  fprintf(outf_tfield,"<?xml version=\"1.0\"?>\n");
-  fprintf(outf_tfield,"<VTKFile type=\"ImageData\" version=\"0.1\"  byte_order=\"LittleEndian\">\n");
-  fprintf(outf_tfield,"<ImageData WholeExtent=\"%d %d %d %d %d %d\"   Origin=\"%d %d %d\" Spacing=\"%d %d %d\">\n",startn,endn,0,M-1,0,N-1
-   ,0,0,0,1,1,1);
-  fprintf(outf_tfield,"<Piece Extent=\"%d %d %d %d %d %d\">\n",startn,endn,0,M-1,0,N-1); 
-  fprintf(outf_tfield,"<PointData Scalars=\"phi\">\n");
-  fprintf(outf_tfield,"<DataArray type=\"Float32\" Name=\"phi\"   format=\"appended\" offset=\"%d\" />\n",off[0]); 
-  fprintf(outf_tfield,"</PointData>\n");
-  fprintf(outf_tfield,"<CellData>\n");
-  fprintf(outf_tfield,"</CellData>\n");
-  fprintf(outf_tfield,"</Piece>\n");
-  fprintf(outf_tfield,"</ImageData>\n");
-  fprintf(outf_tfield,"<AppendedData encoding=\"raw\">\n");
-  fprintf(outf_tfield,"_");
+	FILE * outf_tfield;
+	outf_tfield = fopen(filename, "w");
+	fprintf(outf_tfield, "<?xml version=\"1.0\"?>\n");
+	fprintf(outf_tfield, "<VTKFile type=\"ImageData\" version=\"0.1\"  byte_order=\"LittleEndian\">\n");
+	fprintf(outf_tfield, "<ImageData WholeExtent=\"%d %d %d %d %d %d\"   Origin=\"%d %d %d\" Spacing=\"%d %d %d\">\n", startn, endn, 0, M - 1, 0, N - 1
+		, 0, 0, 0, 1, 1, 1);
+	fprintf(outf_tfield, "<Piece Extent=\"%d %d %d %d %d %d\">\n", startn, endn, 0, M - 1, 0, N - 1);
+	fprintf(outf_tfield, "<PointData Scalars=\"phi\">\n");
+	fprintf(outf_tfield, "<DataArray type=\"Float32\" Name=\"phi\"   format=\"appended\" offset=\"%d\" />\n", off[0]);
+	fprintf(outf_tfield, "</PointData>\n");
+	fprintf(outf_tfield, "<CellData>\n");
+	fprintf(outf_tfield, "</CellData>\n");
+	fprintf(outf_tfield, "</Piece>\n");
+	fprintf(outf_tfield, "</ImageData>\n");
+	fprintf(outf_tfield, "<AppendedData encoding=\"raw\">\n");
+	fprintf(outf_tfield, "_");
 
-  /* Write arrival time field */
-  fwrite(&bytes[0],sizeof(int),1,outf_tfield);
-  if (dmyid==0){
-                 for(int n=0; n<N; n++){
-                    for(int m=0; m<M; m++){
-                        for(int l=0; l<dlocal_n0; l++){
-                            const float value = static_cast<float>(dphi[n+N*(m+M*l)][0]);
-                            fwrite(&value,sizeof(float),1,outf_tfield);
-                         }
-                     }
-                 }
-  } else {
-                 for(int l=1; l <dlocal_n0+1; l ++) for (int m=0; m <M; m ++) for(int n=0; n <N; n ++){
-                   buf[n+N*(m+M*l)]=temp[n+N*(m+M*(l-1))];
-                 }
-                 for(int n=0; n<N; n++){
-                    for(int m=0; m<M; m++){
-                        for(int l=0; l<dlocal_n0+1; l++){
-                            const float value = buf[n+N*(m+M*l)];
-                            fwrite(&value,sizeof(float),1,outf_tfield);
-                         }
-                     }
-                 }
-  }
-  fprintf(outf_tfield,"\n");
-  fprintf(outf_tfield,"</AppendedData>\n");
-  fprintf(outf_tfield,"</VTKFile>\n");
-  fclose(outf_tfield);
-  
-  fftw_free(buf);
-  fftw_free(temp);
+	/* Write arrival time field */
+	fwrite(&bytes[0], sizeof(int), 1, outf_tfield);
+	if (dmyid == 0) {
+		for (int n = 0; n<N; n++) {
+			for (int m = 0; m<M; m++) {
+				for (int l = 0; l<dlocal_n0; l++) {
+					treal[n][m][l] = dphi[n + N*(m + M*l)][0];
+					fwrite(&treal[n][m][l], sizeof(float), 1, outf_tfield);
+				}
+			}
+		}
+	}
+	else {
+		for (int l = 1; l <dlocal_n0 + 1; l++) for (int m = 0; m <M; m++) for (int n = 0; n <N; n++) {
+			buf[n + N*(m + M*l)] = temp[n + N*(m + M*(l - 1))];
+		}
+		for (int n = 0; n<N; n++) {
+			for (int m = 0; m<M; m++) {
+				for (int l = 0; l<dlocal_n0 + 1; l++) {
+					treal[n][m][l] = buf[n + N*(m + M*l)];
+					fwrite(&treal[n][m][l], sizeof(float), 1, outf_tfield);
+				}
+			}
+		}
+	}
+	fprintf(outf_tfield, "\n");
+	fprintf(outf_tfield, "</AppendedData>\n");
+	fprintf(outf_tfield, "</VTKFile>\n");
+	fclose(outf_tfield);
 
-}
-
-static void PVTKWRITEC(int dlocal_n0,int dnumprocs,int dstartz,int dendz, char *dfilename){
-   char filename[20];
-   char filenames[20];   
-   sprintf(filename, "%s%d%s", dfilename, kd,".pvti");
-   ofstream outfile(filename,ios_base::out);
-   outfile.setf(ios_base::fixed,ios_base::floatfield);
-   outfile.precision(4);
-   outfile << "<?xml version=\"1.0\"?>" << endl;
-   outfile << "<VTKFile type=\"PImageData\" version=\"0.1\" byte_order=\"LittleEndian\">" << endl;
-   outfile << "  <PImageData WholeExtent=\"0 "<<L/RD-1<<" 0 "<<M/RD-1<<" "<<dstartz<< " "<<dendz-1<<"\" GhostLevel=\"#\" Origin=\"0  0  0\"  Spacing=\"1  1  1\">"<<endl;   
-   outfile << "    <PPointData>"<< endl;
-   outfile << "      <PDataArray type=\"Float32\" Name=\"con\"/>" << endl;
-//   outfile << "      <PDataArray type=\"Float32\" Name=\"enei\"/>" << endl;
-   outfile << "    </PPointData>"<<endl;
-   
-   sprintf(filenames, "%s%d%s%d%s", dfilename, kd,"_",0,".vti");
-   outfile << "    <Piece Extent=\"0 "<<(dlocal_n0/RD)-1<<" 0 "<<M/RD-1<<" "<<dstartz<< " "<<dendz-1<<"\" Source=\""<<filenames<<"\"/>"<<endl;
-   for (int i=1; i<dnumprocs; i ++) {
-   sprintf(filenames, "%s%d%s%d%s", dfilename, kd,"_",i,".vti");
-   outfile << "    <Piece Extent=\""<<i*(dlocal_n0/RD)-1<<"  "<<(i+1)*(dlocal_n0/RD)-1<<" 0 "<<M/RD-1<<" "<<dstartz<< " "<<dendz-1<<"\" Source=\""<<filenames<<"\"/>"<<endl;
-   }
-
-   outfile << "  </PImageData>"<<endl;
-   outfile << "</VTKFile>"<<endl;
-   outfile.close();
+	free(buf);
+	free(temp);
 
 }
 
-static void sVTKwriteBianryc(fftw_complex *dcon,int dlocal_n0,int dlocal_0_start,int dmyid,int dnumprocs){
-   char filename[20];
-   sprintf(filename, "%s%d%s%d%s", "con_",kd,"_",dmyid,".vti");
+static void PVTKWRITEC(int dlocal_n0, int dnumprocs, int dstartz, int dendz, char *dfilename) {
+	char filename[20];
+	char filenames[20];
+	sprintf(filename, "%s%d%s", dfilename, kd, ".pvti");
+	ofstream outfile(filename, ios_base::out);
+	outfile.setf(ios_base::fixed, ios_base::floatfield);
+	outfile.precision(4);
+	outfile << "<?xml version=\"1.0\"?>" << endl;
+	outfile << "<VTKFile type=\"PImageData\" version=\"0.1\" byte_order=\"LittleEndian\">" << endl;
+	outfile << "  <PImageData WholeExtent=\"0 " << L / RD - 1 << " 0 " << M / RD - 1 << " " << dstartz << " " << dendz - 1 << "\" GhostLevel=\"#\" Origin=\"0  0  0\"  Spacing=\"1  1  1\">" << endl;
+	outfile << "    <PPointData>" << endl;
+	outfile << "      <PDataArray type=\"Float32\" Name=\"con\"/>" << endl;
+	//   outfile << "      <PDataArray type=\"Float32\" Name=\"enei\"/>" << endl;
+	outfile << "    </PPointData>" << endl;
+
+	sprintf(filenames, "%s%d%s%d%s", dfilename, kd, "_", 0, ".vti");
+	outfile << "    <Piece Extent=\"0 " << (dlocal_n0 / RD) - 1 << " 0 " << M / RD - 1 << " " << dstartz << " " << dendz - 1 << "\" Source=\"" << filenames << "\"/>" << endl;
+	for (int i = 1; i<dnumprocs; i++) {
+		sprintf(filenames, "%s%d%s%d%s", dfilename, kd, "_", i, ".vti");
+		outfile << "    <Piece Extent=\"" << i*(dlocal_n0 / RD) - 1 << "  " << (i + 1)*(dlocal_n0 / RD) - 1 << " 0 " << M / RD - 1 << " " << dstartz << " " << dendz - 1 << "\" Source=\"" << filenames << "\"/>" << endl;
+	}
+
+	outfile << "  </PImageData>" << endl;
+	outfile << "</VTKFile>" << endl;
+	outfile.close();
+
+}
+
+static void sVTKwriteBianryc(fftw_complex *dcon, int dlocal_n0, int dlocal_0_start, int dmyid, int dnumprocs) {
+	char filename[20];
+	sprintf(filename, "%s%d%s%d%s", "con_", kd, "_", dmyid, ".vti");
 
 
-   int startn,endn;
-   if (dmyid==0){startn=dlocal_0_start; endn=dlocal_0_start+dlocal_n0-1;}
-   else{startn=dlocal_0_start-1; endn=dlocal_0_start+dlocal_n0-1;}
+	int startn, endn;
+	if (dmyid == 0) { startn = dlocal_0_start; endn = dlocal_0_start + dlocal_n0 - 1; }
+	else { startn = dlocal_0_start - 1; endn = dlocal_0_start + dlocal_n0 - 1; }
 
 
-   MPI_Status stat;
-   int left=dmyid-1,right=dmyid+1;
-   float *buf, *temp;
-   buf = (float *) fftw_malloc(sizeof(float) * M*N*(dlocal_n0+1));
-   temp= (float *) fftw_malloc(sizeof(float) * M*N*(dlocal_n0));
-   if (dmyid>0) {left=dmyid-1;}else{left=MPI_PROC_NULL;}
-   if (dmyid<dnumprocs-1){right=dmyid+1;}else{right=MPI_PROC_NULL;}
-   for (int l=0; l <dlocal_n0; l ++) for (int m=0; m <M; m ++) for(int n=0; n <N; n ++) {
-               temp[n+N*(m+M*l)]=dcon[n+N*(m+M*l)][0];
-        }
-   MPI_Sendrecv(&temp[N*M*(dlocal_n0-1)],N*M,MPI_FLOAT,right,10,&buf[0],N*M,MPI_FLOAT,left,10,MPI_COMM_WORLD,&stat);
+	MPI_Status stat;
+	int left = dmyid - 1, right = dmyid + 1;
+	float *buf, *temp;
+	buf = (float *)fftw_malloc(sizeof(float) * M*N*(dlocal_n0 + 1));
+	temp = (float *)fftw_malloc(sizeof(float) * M*N*(dlocal_n0));
+	if (dmyid>0) { left = dmyid - 1; }
+	else { left = MPI_PROC_NULL; }
+	if (dmyid<dnumprocs - 1) { right = dmyid + 1; }
+	else { right = MPI_PROC_NULL; }
+	for (int l = 0; l <dlocal_n0; l++) for (int m = 0; m <M; m++) for (int n = 0; n <N; n++) {
+		temp[n + N*(m + M*l)] = dcon[n + N*(m + M*l)][0];
+	}
+	MPI_Sendrecv(&temp[N*M*(dlocal_n0 - 1)], N*M, MPI_FLOAT, right, 10, &buf[0], N*M, MPI_FLOAT, left, 10, MPI_COMM_WORLD, &stat);
 
 
-   int    nvar=1; /* Plot only one variable set */
-   int    bytes[100], off[100];
-   off[0]=0;
-   for (int i=0; i<nvar; i++){
-    if (dmyid==0){bytes[i]=(N*M*dlocal_n0)*sizeof(float);} else {bytes[i]=(N*M*(dlocal_n0+1))*sizeof(float);}
-    if (i<nvar-1) off[i+1]=off[i]+sizeof(int)+bytes[i];
-    bytes[i]=bytes[i]+sizeof(int);
-   }
+	float  treal[N][M][dlocal_n0 + 1];
+	int    nvar = 1; /* Plot only one variable set */
+	int    bytes[100], off[100];
+	off[0] = 0;
+	for (int i = 0; i<nvar; i++) {
+		if (dmyid == 0) { bytes[i] = (N*M*dlocal_n0) * sizeof(float); }
+		else { bytes[i] = (N*M*(dlocal_n0 + 1)) * sizeof(float); }
+		if (i<nvar - 1) off[i + 1] = off[i] + sizeof(int) + bytes[i];
+		bytes[i] = bytes[i] + sizeof(int);
+	}
 
 
-  FILE * outf_tfield;
-  outf_tfield=fopen(filename,"w");
-  fprintf(outf_tfield,"<?xml version=\"1.0\"?>\n");
-  fprintf(outf_tfield,"<VTKFile type=\"ImageData\" version=\"0.1\"  byte_order=\"LittleEndian\">\n");
-  fprintf(outf_tfield,"<ImageData WholeExtent=\"%d %d %d %d %d %d\"   Origin=\"%d %d %d\" Spacing=\"%d %d %d\">\n",startn,endn,0,M-1,0,N-1
-   ,0,0,0,1,1,1);
-  fprintf(outf_tfield,"<Piece Extent=\"%d %d %d %d %d %d\">\n",startn,endn,0,M-1,0,N-1); 
-  fprintf(outf_tfield,"<PointData Scalars=\"con\">\n");
-  fprintf(outf_tfield,"<DataArray type=\"Float32\" Name=\"con\"   format=\"appended\" offset=\"%d\" />\n",off[0]); 
-  fprintf(outf_tfield,"</PointData>\n");
-  fprintf(outf_tfield,"<CellData>\n");
-  fprintf(outf_tfield,"</CellData>\n");
-  fprintf(outf_tfield,"</Piece>\n");
-  fprintf(outf_tfield,"</ImageData>\n");
-  fprintf(outf_tfield,"<AppendedData encoding=\"raw\">\n");
-  fprintf(outf_tfield,"_");
+	FILE * outf_tfield;
+	outf_tfield = fopen(filename, "w");
+	fprintf(outf_tfield, "<?xml version=\"1.0\"?>\n");
+	fprintf(outf_tfield, "<VTKFile type=\"ImageData\" version=\"0.1\"  byte_order=\"LittleEndian\">\n");
+	fprintf(outf_tfield, "<ImageData WholeExtent=\"%d %d %d %d %d %d\"   Origin=\"%d %d %d\" Spacing=\"%d %d %d\">\n", startn, endn, 0, M - 1, 0, N - 1
+		, 0, 0, 0, 1, 1, 1);
+	fprintf(outf_tfield, "<Piece Extent=\"%d %d %d %d %d %d\">\n", startn, endn, 0, M - 1, 0, N - 1);
+	fprintf(outf_tfield, "<PointData Scalars=\"con\">\n");
+	fprintf(outf_tfield, "<DataArray type=\"Float32\" Name=\"con\"   format=\"appended\" offset=\"%d\" />\n", off[0]);
+	fprintf(outf_tfield, "</PointData>\n");
+	fprintf(outf_tfield, "<CellData>\n");
+	fprintf(outf_tfield, "</CellData>\n");
+	fprintf(outf_tfield, "</Piece>\n");
+	fprintf(outf_tfield, "</ImageData>\n");
+	fprintf(outf_tfield, "<AppendedData encoding=\"raw\">\n");
+	fprintf(outf_tfield, "_");
 
-  /* Write arrival time field */
-  fwrite(&bytes[0],sizeof(int),1,outf_tfield);
-  if (dmyid==0){
-                 for(int n=0; n<N; n++){
-                    for(int m=0; m<M; m++){
-                        for(int l=0; l<dlocal_n0; l++){
-                            const float value = static_cast<float>(dcon[n+N*(m+M*l)][0]);
-                            fwrite(&value,sizeof(float),1,outf_tfield);
-                         }
-                     }
-                 }
-  } else {
-                 for(int l=1; l <dlocal_n0+1; l ++) for (int m=0; m <M; m ++) for(int n=0; n <N; n ++){
-                   buf[n+N*(m+M*l)]=temp[n+N*(m+M*(l-1))];
-                 }
-                 for(int n=0; n<N; n++){
-                    for(int m=0; m<M; m++){
-                        for(int l=0; l<dlocal_n0+1; l++){
-                            const float value = buf[n+N*(m+M*l)];
-                            fwrite(&value,sizeof(float),1,outf_tfield);
-                         }
-                     }
-                 }
-  }
-  fprintf(outf_tfield,"\n");
-  fprintf(outf_tfield,"</AppendedData>\n");
-  fprintf(outf_tfield,"</VTKFile>\n");
-  fclose(outf_tfield);
-  
-  fftw_free(buf);
-  fftw_free(temp);
+	/* Write arrival time field */
+	fwrite(&bytes[0], sizeof(int), 1, outf_tfield);
+	if (dmyid == 0) {
+		for (int n = 0; n<N; n++) {
+			for (int m = 0; m<M; m++) {
+				for (int l = 0; l<dlocal_n0; l++) {
+					treal[n][m][l] = dcon[n + N*(m + M*l)][0];
+					fwrite(&treal[n][m][l], sizeof(float), 1, outf_tfield);
+				}
+			}
+		}
+	}
+	else {
+		for (int l = 1; l <dlocal_n0 + 1; l++) for (int m = 0; m <M; m++) for (int n = 0; n <N; n++) {
+			buf[n + N*(m + M*l)] = temp[n + N*(m + M*(l - 1))];
+		}
+		for (int n = 0; n<N; n++) {
+			for (int m = 0; m<M; m++) {
+				for (int l = 0; l<dlocal_n0 + 1; l++) {
+					treal[n][m][l] = buf[n + N*(m + M*l)];
+					fwrite(&treal[n][m][l], sizeof(float), 1, outf_tfield);
+				}
+			}
+		}
+	}
+	fprintf(outf_tfield, "\n");
+	fprintf(outf_tfield, "</AppendedData>\n");
+	fprintf(outf_tfield, "</VTKFile>\n");
+	fclose(outf_tfield);
+
+	free(buf);
+	free(temp);
 
 }
 
@@ -3029,7 +3101,7 @@ static void READPHIVTIN(fftw_complex *dphi, int dlocal_n0,int dmyid){
 	   printf("can't open this file\n");
 		   exit(0);
 	 }
-     char bufc[100]; //洢ַ
+     char bufc[100]; //�洢�ַ�
      int i = 1;
      while (i<13) {
        fgets(bufc, 100, inf_field) ;
@@ -3116,7 +3188,7 @@ static void READPHIVTIC(fftw_complex *dcon, int dlocal_n0,int dmyid){
 	   printf("can't open this file\n");
 		   exit(0);
 	 }
-     char bufc[100]; //洢ַ
+     char bufc[100]; //�洢�ַ�
      int i = 1;
      while (i<13) {
        fgets(bufc, 100, inf_field) ;
@@ -3255,683 +3327,5 @@ static void SMOOTHCON(fftw_complex *dcon,int dlocal_n0,int dlocal_0_start,int dm
 }	
 
 
-static void phimax_atmposi(fftw_complex* dphi, fftw_complex* dcon, int dlocal_n0, int dlocal_0_start, int dmyid, int dnumprocs) {
-	MPI_Status stat;
-	int left = dmyid - 1, right = dmyid + 1;
-	int head = 0, tail = dnumprocs - 1;
-	if (dmyid > 0) { left = dmyid - 1; }
-	else { left = MPI_PROC_NULL; }
-	if (dmyid < dnumprocs - 1) { right = dmyid + 1; }
-	else { right = MPI_PROC_NULL; }
-
-	float phic, phimax = 0, phicut = 0.65, bufphimax;
-	for (int l = 0; l < dlocal_n0; l++) for (int m = 0; m < M; m++) {
-		if (dphi[m + M * l][0] > phimax) { phimax = dphi[m + M * l][0]; }
-	}
-
-	float pii;
-	MPI_Allreduce(&phimax, &pii, 1, MPI_FLOAT, MPI_MAX, MPI_COMM_WORLD);
-	phic = (pii - pii * phicut);
-	//  cout<<"phic="<<phic<<" "<<"phimax="<<phimax<<" "<<"myid="<<dmyid<<endl;
-	cout << "o" << "myid=" << dmyid << endl;
-	double* buf, *bufc;
-	buf = (double*)fftw_malloc(sizeof(double) * M * (dlocal_n0 + 2));
-	for (int l = 0; l < dlocal_n0 + 2; l++) for (int m = 0; m < M; m++) {
-		buf[m + M * l] = 0;
-	}
-	for (int l = 1; l < dlocal_n0 + 1; l++) for (int m = 0; m < M; m++) {
-		buf[m + M * l] = dphi[m + M * (l - 1)][0];
-	}
-
-	if (dmyid == head) { MPI_Sendrecv(&buf[M], M, MPI_DOUBLE, tail, 40, &buf[0], M, MPI_DOUBLE, tail, 40, MPI_COMM_WORLD, &stat); }
-	if (dmyid == tail) { MPI_Sendrecv(&buf[(dlocal_n0)*M], M, MPI_DOUBLE, head, 40, &buf[(dlocal_n0 + 1) * M], M, MPI_DOUBLE, head, 40, MPI_COMM_WORLD, &stat); }
-
-	MPI_Sendrecv(&buf[M * (dlocal_n0)], M, MPI_DOUBLE, right, 20, &buf[0], M, MPI_DOUBLE, left, 20, MPI_COMM_WORLD, &stat);
-	MPI_Sendrecv(&buf[M], M, MPI_DOUBLE, left, 20, &buf[M * (dlocal_n0 + 1)], M, MPI_DOUBLE, right, 20, MPI_COMM_WORLD, &stat);
-
-	bufc = (double*)fftw_malloc(sizeof(double) * M * (dlocal_n0 + 2));
-	for (int l = 0; l < dlocal_n0 + 2; l++) for (int m = 0; m < M; m++) {
-		bufc[m + M * l] = 0;
-	}
-	for (int l = 1; l < dlocal_n0 + 1; l++) for (int m = 0; m < M; m++) {
-		bufc[m + M * l] = dcon[m + M * (l - 1)][0];
-	}
-
-	if (dmyid == head) { MPI_Sendrecv(&bufc[M], M, MPI_DOUBLE, tail, 40, &bufc[0], M, MPI_DOUBLE, tail, 40, MPI_COMM_WORLD, &stat); }
-	if (dmyid == tail) { MPI_Sendrecv(&bufc[(dlocal_n0)*M], M, MPI_DOUBLE, head, 40, &bufc[(dlocal_n0 + 1) * M], M, MPI_DOUBLE, head, 40, MPI_COMM_WORLD, &stat); }
-
-	MPI_Sendrecv(&bufc[M * (dlocal_n0)], M, MPI_DOUBLE, right, 20, &bufc[0], M, MPI_DOUBLE, left, 20, MPI_COMM_WORLD, &stat);
-	MPI_Sendrecv(&bufc[M], M, MPI_DOUBLE, left, 20, &bufc[M * (dlocal_n0 + 1)], M, MPI_DOUBLE, right, 20, MPI_COMM_WORLD, &stat);
-
-
-		// Fallback location (global maximum on this rank; valid for single-process builds).
-		double global_min_phi = std::numeric_limits<double>::infinity();
-		double global_max_phi = -std::numeric_limits<double>::infinity();
-		int finite_phi = 0;
-		int above_cut = 0;
-		int global_max_m = 0;
-		int global_max_l = 1;
-		for (int l = 1; l < dlocal_n0 + 1; ++l) {
-			for (int m = 0; m < M; ++m) {
-				const double v = static_cast<double>(buf[m + M * l]);
-				if (!std::isfinite(v)) continue;
-				finite_phi++;
-				global_min_phi = std::min(global_min_phi, v);
-				global_max_phi = std::max(global_max_phi, v);
-				if (v > -0.07) above_cut++;
-				if (v >= global_max_phi) {
-					global_max_m = m;
-					global_max_l = l;
-				}
-			}
-		}
-
-	double xtemp, ytemp, ztemp; int num_atoms = 0;
-	int lf, lb, mf, mb, nf, nb;
-	// float pc[L*M][3];
-
-	double* pc_x, * pc_y, * pc_z, * phi_max; float * con_max;
-	const size_t max_atoms = static_cast<size_t>(M) * static_cast<size_t>(dlocal_n0) * static_cast<size_t>(std::max(1, N));
-	pc_x = (double*)malloc(max_atoms * sizeof(double));
-	pc_y = (double*)malloc(max_atoms * sizeof(double));
-	pc_z = (double*)malloc(max_atoms * sizeof(double));
-	phi_max = (double*)malloc(max_atoms * sizeof(double));
-	con_max = (float*)malloc(max_atoms * sizeof(float));
-	cout << "first" << "myid=" << dmyid << endl;
-
-	for (int n = 0; n < N; n++) for (int m = 0; m < M; m++) for (int l = 1; l < dlocal_n0 + 1; l++) {
-		const double center = static_cast<double>(buf[m + M * l]);
-		if (!std::isfinite(center) || center <= -0.07) {
-			continue;
-		}
-			lf = l - 1;
-			lb = l + 1;
-			mf = m - 1;
-			mb = m + 1;
-			nf = n - 1;
-			nb = n + 1;
-			if (mf < 0) mf = M - 1;
-			if (mb > M - 1) mb = 0;
-			if (nf < 0) nf = N - 1;
-			if (nb > N - 1) nb = 0;
-
-			//if ((buf[m+M*l] >= buf[m+M*lf]) && (buf[m+M*l] >= buf[m+M*lb])&&(buf[m+M*l] >= buf[mf+M*l]) && (buf[m+M*l] >= buf[mb+M*l])){
-			//   if ((buf[m+M*l] >= buf[m+M*lf]) && (buf[m+M*l] >= buf[m+M*lb])&&(buf[m+M*l] >= buf[mf+M*l]) && (buf[m+M*l] >= buf[mb+M*l])
-			//    &&(buf[m+M*l] >= buf[mb+M*lb])&&(buf[m+M*l] >= buf[mb+M*lf])&&(buf[m+M*l] >= buf[mf+M*lb])&&(buf[m+M*l] >= buf[mf+M*lf])){
-
-			auto nbv = [&](int mm, int ll) -> double {
-				const double v = static_cast<double>(buf[mm + M * ll]);
-				return std::isfinite(v) ? v : -std::numeric_limits<double>::infinity();
-			};
-
-				// Be tolerant to plateaus/ties: accept if center is >= all neighbors and > at least one neighbor.
-				const double n0 = nbv(m, lf);
-				const double n1 = nbv(m, lb);
-				const double n2 = nbv(mf, l);
-				const double n3 = nbv(mb, l);
-				const double n4 = nbv(mb, lb);
-				const double n5 = nbv(mb, lf);
-				const double n6 = nbv(mf, lb);
-				const double n7 = nbv(mf, lf);
-
-				bool ge_all = true;
-				bool gt_any = false;
-				auto visit = [&](double nb) {
-					if (center < nb) ge_all = false;
-					if (center > nb) gt_any = true;
-				};
-				visit(n0);
-				visit(n1);
-				visit(n2);
-				visit(n3);
-				visit(n4);
-				visit(n5);
-				visit(n6);
-				visit(n7);
-
-				if (ge_all && gt_any) {
-
-
-				xtemp = (dlocal_0_start + l + 1) * dx;
-				ytemp = (m + 1) * dx;
-				ztemp = (n + 1) * dx;
-
-				const double z0 = center;
-				const double z1 = static_cast<double>(buf[m + M * lb]);
-				const double z3 = static_cast<double>(buf[m + M * lf]);
-				const double z4 = static_cast<double>(buf[mb + M * l]);
-				const double z2 = static_cast<double>(buf[mf + M * l]);
-
-				double delta_x = 0.0;
-				double delta_y = 0.0;
-				double phi_local = z0;
-				if (std::isfinite(z1) && std::isfinite(z3) && std::isfinite(z4) && std::isfinite(z2)) {
-					const double dx_d = static_cast<double>(dx);
-					const double inv2dx = 0.5 / dx_d;
-					const double invdx2 = 1.0 / (dx_d * dx_d);
-					const double a1 = (z1 - z3) * inv2dx;
-					const double a2 = (z4 - z2) * inv2dx;
-					const double a3 = 0.5 * (z1 + z3 - 2.0 * z0) * invdx2;
-					const double a4 = 0.5 * (z2 + z4 - 2.0 * z0) * invdx2;
-					const double eps = 1e-12;
-
-					if (std::isfinite(a3) && std::fabs(a3) > eps) delta_x = -a1 / (2.0 * a3);
-					if (std::isfinite(a4) && std::fabs(a4) > eps) delta_y = -a2 / (2.0 * a4);
-
-					const double half_dx = 0.5 * dx_d;
-					delta_x = std::clamp(delta_x, -half_dx, half_dx);
-					delta_y = std::clamp(delta_y, -half_dx, half_dx);
-
-					double phi_interp = z0;
-					if (std::isfinite(a3) && std::fabs(a3) > eps && std::isfinite(a1)) phi_interp -= 0.25 * a1 * a1 / a3;
-					if (std::isfinite(a4) && std::fabs(a4) > eps && std::isfinite(a2)) phi_interp -= 0.25 * a2 * a2 / a4;
-					if (std::isfinite(phi_interp)) phi_local = phi_interp;
-				}
-
-				if (static_cast<size_t>(num_atoms) < max_atoms) {
-					pc_x[num_atoms] = xtemp + delta_x; //(xtemp+1)*dx;//+delta_x;
-					pc_y[num_atoms] = ytemp + delta_y; //(ytemp+1)*dx; //+delta_y;
-					pc_z[num_atoms] = ztemp;
-					phi_max[num_atoms] = phi_local;
-					const double c = static_cast<double>(bufc[m + M * l]);
-					con_max[num_atoms] = std::isfinite(c) ? static_cast<float>(c) : con0;
-					num_atoms++;
-				}
-			}
-
-
-	}
-
-
-	if (num_atoms == 0) {
-		if (dmyid == 0) {
-			cout << "WARNING: no local maxima found; writing global max fallback point" << endl;
-		}
-		const double dx_d = static_cast<double>(dx);
-		const double x0 = (dlocal_0_start + global_max_l + 1) * dx_d;
-		const double y0 = (global_max_m + 1) * dx_d;
-		const double z0 = dx_d;
-		pc_x[0] = x0;
-		pc_y[0] = y0;
-		pc_z[0] = z0;
-		phi_max[0] = std::isfinite(global_max_phi) ? global_max_phi : 0.0;
-		const double c0 = static_cast<double>(bufc[global_max_m + M * global_max_l]);
-		con_max[0] = std::isfinite(c0) ? static_cast<float>(c0) : con0;
-		num_atoms = 1;
-	}
-	cout << num_atoms << " " << dmyid << endl;
-	int* rcounts, * displs;
-	rcounts = (int*)malloc(dnumprocs * sizeof(int));
-	displs = (int*)malloc(dnumprocs * sizeof(int));
-	int size_pc = num_atoms;
-
-	MPI_Gather(&size_pc, 1, MPI_INT, rcounts, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
-	MPI_Bcast(rcounts, dnumprocs, MPI_INT, 0, MPI_COMM_WORLD);
-	cout << "second" << "myid=" << dmyid << endl;
-	MPI_Barrier(MPI_COMM_WORLD);
-	displs[0] = 0;
-	for (int i = 1; i < dnumprocs; ++i) { displs[i] = displs[i - 1] + rcounts[i - 1]; }
-	int size_buf = displs[dnumprocs - 1] + rcounts[dnumprocs - 1];
-
-	// float rbuf[size_buf][3];
-	double* rbuf_x, * rbuf_y, * rbuf_z, * rbuf_phi; float * rbuf_con;
-	rbuf_x = (double*)malloc(size_buf * sizeof(double));
-	rbuf_y = (double*)malloc(size_buf * sizeof(double));
-	rbuf_z = (double*)malloc(size_buf * sizeof(double));
-	rbuf_phi = (double*)malloc(size_buf * sizeof(double));
-	rbuf_con = (float*)malloc(size_buf * sizeof(float));
-
-	MPI_Gatherv(pc_x, size_pc, MPI_DOUBLE, rbuf_x, rcounts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-	MPI_Gatherv(pc_y, size_pc, MPI_DOUBLE, rbuf_y, rcounts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-	MPI_Gatherv(pc_z, size_pc, MPI_DOUBLE, rbuf_z, rcounts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-	MPI_Gatherv(phi_max, size_pc, MPI_DOUBLE, rbuf_phi, rcounts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Gatherv(con_max, size_pc, MPI_FLOAT, rbuf_con, rcounts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
-
-	cout << "third" << "myid=" << dmyid << endl;
-	if (dmyid == 0) {
-		int num_atoms_total = 0;
-			for (int i = 0; i < size_buf; i++) {
-				const double x = rbuf_x[i];
-				const double y = rbuf_y[i];
-				const double z = rbuf_z[i];
-				const double v = rbuf_phi[i];
-			const double c = rbuf_con[i];
-			if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) || !std::isfinite(v) || !std::isfinite(c)) continue;
-			if (x < 0) continue;
-			num_atoms_total++;
-			}
-			cout << "num_atoms_total=" << num_atoms_total << endl;
-			if (num_atoms_total <= 2) {
-				cout << "phimax_atmposi debug: finite_phi=" << finite_phi
-				     << " above_cut=" << above_cut
-				     << " phi_min=" << global_min_phi
-				     << " phi_max=" << global_max_phi << endl;
-			}
-
-			char filename[20];
-		sprintf(filename, "%s%d%s", "Phimax_", kd, ".txt");
-		ofstream outfile(filename, ios_base::out);
-		outfile.setf(ios_base::fixed, ios_base::floatfield);
-		outfile.precision(4);
-
-		outfile << 2 * num_atoms_total << endl;
-		outfile << "Kommentar" << endl;
-
-
-		for (int i = 0; i < size_buf; i++) {
-			const double x = rbuf_x[i];
-			const double y = rbuf_y[i];
-			const double z = rbuf_z[i];
-			const double v = rbuf_phi[i];
-			const double c = rbuf_con[i];
-			if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) || !std::isfinite(v) || !std::isfinite(c)) continue;
-			if (x < 0) continue;
-			outfile << x << " " << y << " " << z << " " << v << " " << c << endl;
-			outfile << x << " " << y << " " << z + 20 << " " << v << " " << c << endl;
-		}
-
-		outfile.close();
-		//cryst_order(rbuf_x, rbuf_y, rbuf_z, rbuf_phi, size_buf);
-
-	}
-
-	fftw_free(buf);
-	fftw_free(bufc);
-	free(pc_x);
-	free(pc_y);
-	free(pc_z);
-	free(phi_max);
-	free(con_max);
-	free(rcounts);
-	free(displs);
-	free(rbuf_x);
-	free(rbuf_y);
-	free(rbuf_z);
-	free(rbuf_phi);
-	free(rbuf_con);
-}
-
-
-
-static void cryst_order(double *drbuf_x, double *drbuf_y, double *drbuf_z, double *dphimax, int dsize_buf) {
-	const int CNmax = 16;
-	unsigned *Nb = 0, *solidlike = 0;
-	int Num_bcc = 0, Num_fcc = 0, Num_hcp = 0, Num_mediatq6 = 0, Num_lowq6 = 0, *nb_index, jj;
-	float drx, dry, drz, rjx, rjy, rjz, rr, r3[9] = { 0 }, frame_x = L*dx, frame_y = M*dx, frame_z = N*dx;
-	Nb = (unsigned *)fftw_malloc(sizeof(unsigned) * dsize_buf);
-	solidlike = (unsigned *)fftw_malloc(sizeof(unsigned) * dsize_buf);
-
-	double *CoX = 0, *CoY = 0, *CoZ = 0, *rij = 0, *fai = 0, *theta = 0;
-	rij = (double *)fftw_malloc(sizeof(double) * dsize_buf*CNmax);
-	CoX = (double *)fftw_malloc(sizeof(double) * dsize_buf*CNmax);
-	CoY = (double *)fftw_malloc(sizeof(double) * dsize_buf*CNmax);
-	CoZ = (double *)fftw_malloc(sizeof(double) * dsize_buf*CNmax);
-	nb_index = (int *)fftw_malloc(sizeof(int) * dsize_buf*CNmax);
-	theta = (double *)fftw_malloc(sizeof(double) * dsize_buf*CNmax);
-	fai = (double *)fftw_malloc(sizeof(double) * dsize_buf*CNmax);
-
-	int num_t = 0;
-	for (int tt = 0; tt<dsize_buf; tt++) { if (drbuf_x[tt] >= 0) num_t++; }
-	cout << "dsize_buf=" << dsize_buf << " , num_t=" << num_t << endl;
-
-
-
-	for (int ii = 0; ii<dsize_buf; ii++) {
-		Nb[ii] = 0;
-	}
-
-
-	for (int ii = 0; ii<dsize_buf*CNmax; ii++) {
-		theta[ii] = 0.; fai[ii] = 0.;
-	}
-
-
-	cout << "initial Nb" << endl;
-
-	for (int i = 0; i<dsize_buf; i++) {
-		for (int j = 0; j<dsize_buf; j++) {
-			if (i != j)
-			{
-				r3[0] = (drbuf_x[i] - drbuf_x[j]);
-				r3[1] = (drbuf_y[i] - drbuf_y[j]);
-				r3[2] = (drbuf_z[i] - drbuf_z[j]);
-				r3[3] = r3[0] + frame_x;
-				r3[4] = r3[1] + frame_y;
-				r3[5] = r3[2] + frame_z;
-				r3[6] = r3[0] - frame_x;
-				r3[7] = r3[1] - frame_y;
-				r3[8] = r3[2] - frame_z;
-				drx = min3(std::fabs(r3[0]), std::fabs(r3[3]), std::fabs(r3[6]));
-				dry = min3(std::fabs(r3[1]), std::fabs(r3[4]), std::fabs(r3[7]));
-				drz = min3(std::fabs(r3[2]), std::fabs(r3[5]), std::fabs(r3[8]));
-				rr = sqrt(drx*drx + dry*dry + drz*drz);
-				//cout << "rr="<<rr << endl;
-				if (rr<bench100_h) {
-					Nb[i] = Nb[i] + 1;
-
-					if (Nb[i] <= CNmax && Nb[i]>0) {
-						rij[Nb[i] - 1 + CNmax*i] = rr;
-						for (int ii = 0; ii<7; ii = ii + 3) {
-							if (std::fabs(std::fabs(r3[ii]) - drx)<1e-3) rjx = drbuf_x[i] - r3[ii];
-						}	// the X position of neighbor j considering the periodic boundary condition	  
-						for (int ii = 1; ii<8; ii = ii + 3) {
-							if (std::fabs(std::fabs(r3[ii]) - dry)<1e-3) rjy = drbuf_y[i] - r3[ii];
-						}
-						for (int ii = 2; ii<9; ii = ii + 3) {
-							if (std::fabs(std::fabs(r3[ii]) - drz)<1e-3) rjz = drbuf_z[i] - r3[ii];
-						}
-						CoX[Nb[i] - 1 + CNmax*i] = rjx;   //the X position of atom i's numbering (Nb[i]-1) neighbor
-						CoY[Nb[i] - 1 + CNmax*i] = rjy;
-						CoZ[Nb[i] - 1 + CNmax*i] = rjz;
-						//cout << "rjz=" << rjz << endl;
-						nb_index[Nb[i] - 1 + CNmax*i] = j;   //the index of atom i's numbering (Nb[i]-1) neighbor
-
-
-					}
-				}
-			}
-		}
-	}
-
-
-
-
-	for (int i = 0; i<dsize_buf; i++) {
-		if (Nb[i]>0 && Nb[i] <= CNmax) {
-			for (int j = 0; j<Nb[i]; j++) {
-				theta[j + CNmax*i] = acos((CoZ[j + CNmax*i] - drbuf_z[i]) / (rij[j + CNmax*i] + 1.e-4));
-
-
-				fai[j + CNmax*i] = atan((CoY[j + CNmax*i] - drbuf_y[i]) / (CoX[j + CNmax*i] - drbuf_x[i] + 1.e-4));
-				if ((CoX[j + CNmax*i] - drbuf_x[i])<0.)  fai[j + CNmax*i] = fai[j + CNmax*i] + pi; // in the third and second quardrant of xy plane
-
-
-			}
-		}
-	}
-
-
-	//cout<<"angle calulation done"<<endl; 
-
-	//	char angname[20];
-	//    sprintf(angname, "%s%d%s", "ang_", kd,".txt");
-	//   ofstream outang(angname,ios_base::out);
-	//   outang.setf(ios_base::fixed,ios_base::floatfield);
-	//   outang.precision(6);
-	//	for(int i=0; i<dsize_buf; i++){
-	//	  for(int j=0; j<Nb[i]; j++){
-	//	    outang<<i<<" "<<j<<" "<<rij[j+CNmax*i]<<" "<<theta[j+CNmax*i]<<" "<<fai[j+CNmax*i]<<endl;   //the elements: r, theta, fai in sphere coordinate
-	//	  }
-	//	}
-	//    outang.close();
-
-
-
-
-
-	float *sij;
-	double Qlm_m, *qlmb_m = 0, *q_6, *q_4, SumNb, Qlm_r, Qlm_c, xishu, Q6, Q4;
-
-	qlmb_m = (double *)fftw_malloc(sizeof(double) * dsize_buf);
-	q_4 = (double *)fftw_malloc(sizeof(double) * dsize_buf);
-	q_6 = (double *)fftw_malloc(sizeof(double) * dsize_buf);
-	sij = (float *)fftw_malloc(sizeof(float) * dsize_buf*CNmax);
-
-	for (int i = 0; i<dsize_buf; i++) { qlmb_m[i] = 0.;  q_4[i] = 0.; q_6[i] = 0.; solidlike[i] = 0; }
-
-
-	for (int i = 0; i<dsize_buf; i++) {
-		for (int j = 0; j<CNmax; j++) { sij[j + CNmax*i] = 0.; }
-	}
-
-
-	fftw_complex *qlmb, *qlmbar;
-
-	qlmb = (fftw_complex *)fftw_malloc(sizeof(fftw_complex) * dsize_buf);
-
-	qlmbar = (fftw_complex *)fftw_malloc(sizeof(fftw_complex) * dsize_buf);
-
-
-
-
-
-	int LL = 4;   Qlm_m = 0.;   //q4 start########################################################
-
-	for (int m = -LL; m <= LL; m++)
-	{
-
-		for (int ii = 0; ii<dsize_buf; ii++)
-		{
-
-			qlmb[ii][0] = 0.; qlmb[ii][1] = 0.; qlmbar[ii][0] = 0.; qlmbar[ii][1] = 0.;
-		}
-
-		for (int i = 0; i<dsize_buf; i++) {
-			if (Nb[i]>0 && Nb[i] <= CNmax) {
-				for (int j = 0; j<Nb[i]; j++) {
-					qlmb[i][0] += Ylmtf_r(LL, m, theta[j + CNmax*i], fai[j + CNmax*i]);
-					qlmb[i][1] += Ylmtf_c(LL, m, theta[j + CNmax*i], fai[j + CNmax*i]);
-					if (j == int(Nb[i]) - 1) {
-						qlmb[i][0] = qlmb[i][0] / float(Nb[i]);    // qlm_bar(i)
-						qlmb[i][1] = qlmb[i][1] / float(Nb[i]);
-					}
-				}
-			}
-		}
-
-
-
-		for (int i = 0; i<dsize_buf; i++) {
-			if (Nb[i]>0 && Nb[i] <= CNmax) {
-				for (int j = 0; j<Nb[i]; j++) {
-					jj = nb_index[j + CNmax*i];
-					qlmbar[i][0] += qlmb[jj][0];///////////////////////////////////  nb_index[j+CNmax*i]
-					qlmbar[i][1] += qlmb[jj][1];
-					if (j == int(Nb[i]) - 1) {
-						qlmbar[i][0] = (qlmb[i][0] + qlmbar[i][0]) / float(Nb[i] + 1);    // qlm_bar(i)
-						qlmbar[i][1] = (qlmb[i][1] + qlmbar[i][1]) / float(Nb[i] + 1);
-					}
-				}
-			}
-		}
-
-
-
-
-		SumNb = 0., Qlm_r = 0., Qlm_c = 0.;
-		for (int i = 0; i<dsize_buf; i++) {
-			qlmb_m[i] += qlmbar[i][0] * qlmbar[i][0] + qlmbar[i][1] * qlmbar[i][1];
-			Qlm_r += Nb[i] * qlmb[i][0];
-			Qlm_c += Nb[i] * qlmbar[i][1];
-			SumNb += Nb[i];
-		}
-		Qlm_r /= SumNb;   //Qlm_bar_realpart(i)
-		Qlm_c /= SumNb;
-		Qlm_m += (Qlm_r*Qlm_r + Qlm_c*Qlm_c);
-
-	}
-
-
-
-
-	xishu = 4 * pi / float(2 * LL + 1);
-	Q4 = sqrt(xishu*Qlm_m); //GLOBAL
-
-	for (int i = 0; i<dsize_buf; i++)
-	{
-		q_4[i] = sqrt(xishu*qlmb_m[i]);
-
-
-
-	}
-
-
-
-
-
-	//q4 done#####################################################################
-
-
-	cout << "q4calculation done" << endl;
-
-
-
-	// cout<<"before q6calculation"<<endl; 
-
-	LL = 6; Qlm_m = 0.;   //q6 start***********************************************
-
-	for (int m = -LL; m <= LL; m++)
-	{
-
-		for (int ii = 0; ii<dsize_buf; ii++)
-		{
-
-			qlmb[ii][0] = 0.; qlmb[ii][1] = 0.; qlmbar[ii][0] = 0.; qlmbar[ii][1] = 0.;
-		}
-
-		for (int i = 0; i<dsize_buf; i++) {
-			if (Nb[i]>0 && Nb[i] <= CNmax) {
-				for (int j = 0; j<Nb[i]; j++) {
-					qlmb[i][0] += Ylmtf_r(LL, m, theta[j + CNmax*i], fai[j + CNmax*i]);
-					qlmb[i][1] += Ylmtf_c(LL, m, theta[j + CNmax*i], fai[j + CNmax*i]);
-					if (j == int(Nb[i]) - 1) {
-						qlmb[i][0] = qlmb[i][0] / float(Nb[i]);    // 
-						qlmb[i][1] = qlmb[i][1] / float(Nb[i]);
-					}
-				}
-			}
-		}
-
-
-
-		for (int i = 0; i<dsize_buf; i++) {
-			if (Nb[i]>0 && Nb[i] <= CNmax) {
-				for (int j = 0; j<Nb[i]; j++) {
-					jj = nb_index[j + CNmax*i];
-					qlmbar[i][0] += qlmb[jj][0];///////////////////////////////////  nb_index[j+CNmax*i]
-					qlmbar[i][1] += qlmb[jj][1];
-					sij[j + CNmax*i] += (qlmb[i][0] * qlmb[jj][0] + qlmb[i][1] * qlmb[jj][1]) / sqrt(qlmb[i][0] * qlmb[i][0] + qlmb[i][1] * qlmb[i][1]) / sqrt(qlmb[jj][0] * qlmb[jj][0] + qlmb[jj][1] * qlmb[jj][1]);
-
-					if (j == int(Nb[i]) - 1) {
-						qlmbar[i][0] = (qlmb[i][0] + qlmbar[i][0]) / float(Nb[i] + 1);    // qlm_bar(i)
-						qlmbar[i][1] = (qlmb[i][1] + qlmbar[i][1]) / float(Nb[i] + 1);
-					}
-				}
-			}
-
-
-
-		}
-
-
-
-		SumNb = 0., Qlm_r = 0., Qlm_c = 0., Qlm_m;
-		for (int i = 0; i<dsize_buf; i++) {
-			qlmb_m[i] += qlmbar[i][0] * qlmbar[i][0] + qlmbar[i][1] * qlmbar[i][1];
-			Qlm_r += Nb[i] * qlmb[i][0];
-			Qlm_c += Nb[i] * qlmb[i][1];
-			SumNb += Nb[i];
-		}
-		Qlm_r /= SumNb;   //Qlm_bar_realpart(i)
-		Qlm_c /= SumNb;
-		Qlm_m += (Qlm_r*Qlm_r + Qlm_c*Qlm_c);
-
-	}  //for (m=0,....)
-
-
-
-	int s_conect = 0;
-	for (int i = 0; i<dsize_buf; i++) {
-		s_conect = 0;
-		for (int j = 0; j<CNmax; j++) { if (sij[j + CNmax*i]>0.7) s_conect++; }
-		if (s_conect>8) solidlike[i] = 1;
-	}
-
-
-	xishu = 4 * pi / float(2 * LL + 1);
-	Q6 = sqrt(xishu*Qlm_m); //GLOBAL
-
-	for (int i = 0; i<dsize_buf; i++)
-	{
-		q_6[i] = sqrt(xishu*qlmb_m[i]);
-
-		if (std::fabs(q_6[i])>2.) q_6[i] = 0.;
-
-	}
-
-
-
-
-
-
-	for (int i = 0; i<dsize_buf; i++)
-	{
-
-
-		qlmb_m[i] = 0.;
-
-		qlmb[i][0] = 0.;
-		qlmb[i][1] = 0.;
-
-
-
-
-	}
-
-
-
-	//q6 done*************************************************************
-
-	
-
-
-	//
-
-	int num_atoms_total = 0;
-	for (int i = 0; i<dsize_buf; i++) { if (drbuf_x[i] >= 0) { num_atoms_total++; } }
-	cout << "num_atoms_totalcry=" << num_atoms_total << endl;
-
-	char filename[20];
-	sprintf(filename, "%s%d%s", "Phimaxq4q6_", kd, ".txt");
-	ofstream outfile(filename, ios_base::out);
-	outfile.setf(ios_base::fixed, ios_base::floatfield);
-	outfile.precision(4);
-
-	outfile << dsize_buf << endl;
-	outfile << "Kommentar" << endl;
-
-
-	for (int i = 0; i<dsize_buf; i++) {
-		if (drbuf_x[i] >= 0) {
-			outfile << "qc" << " " << drbuf_x[i] << " " << drbuf_y[i] << " " << drbuf_z[i] << " " << dphimax[i] << " " << q_4[i] << " " << q_6[i] << endl;
-		}
-	}
-
-	outfile.close();
-
-
-
-
-
-
-
-
-	free(rij);
-	free(CoX);
-	free(CoY);
-	free(CoZ);
-	free(Nb);
-	free(theta);
-	free(fai);
-	free(qlmbar);
-	free(qlmb);
-	free(qlmb_m);
-	free(q_4);
-	free(q_6);
-	free(solidlike);
-	free(sij);
-
-}
 
 

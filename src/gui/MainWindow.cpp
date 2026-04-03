@@ -325,19 +325,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         return l;
     };
 
-    auto* expParamsBox = new QGroupBox("Parameters");
-    auto* expParamsGrid = new QGridLayout;
-    expParamsGrid->setVerticalSpacing(6);
-    expParamsGrid->setHorizontalSpacing(12);
-    expParamsGrid->setColumnStretch(2, 1);
-
-    expParamsGrid->addWidget(header("Param"), 0, 0);
-    expParamsGrid->addWidget(header("Mode"), 0, 1);
-    expParamsGrid->addWidget(header("Values"), 0, 2);
-
-    sweepParams_.clear();
-    sweepParams_.reserve(16);
-
+    // -- Helper: connect widget changes to preview update --
     auto connectSpinChanged = [this](QObject* w) {
         if (!w) return;
         if (auto* d = qobject_cast<QDoubleSpinBox*>(w)) {
@@ -351,7 +339,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         }
     };
 
-    auto addDoubleParam = [&](const QString& key, const QString& labelText, double minV, double maxV, double defV, int decimals, double stepV) {
+    // -- Helper lambdas for adding sweep parameter rows to a grid --
+    auto addDoubleParamTo = [&](QGridLayout* grid, QVector<SweepParamWidgets>& target,
+                                const QString& key, const QString& labelText,
+                                double minV, double maxV, double defV, int decimals, double stepV) {
         SweepParamWidgets p;
         p.key = key;
         p.label = labelText;
@@ -418,7 +409,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
         connect(p.mode, &QComboBox::currentIndexChanged, this, [stack = p.stack](int idx) { stack->setCurrentIndex(idx); });
 
-        // Trigger preview updates
         connectSpinChanged(p.mode);
         connectSpinChanged(p.fixedDouble);
         connectSpinChanged(p.rangeStartDouble);
@@ -426,14 +416,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         connectSpinChanged(p.rangeStepDouble);
         connectSpinChanged(p.listEdit);
 
-        const int row = expParamsGrid->rowCount();
-        expParamsGrid->addWidget(name, row, 0);
-        expParamsGrid->addWidget(p.mode, row, 1);
-        expParamsGrid->addWidget(p.stack, row, 2);
-        sweepParams_.push_back(p);
+        const int row = grid->rowCount();
+        grid->addWidget(name, row, 0);
+        grid->addWidget(p.mode, row, 1);
+        grid->addWidget(p.stack, row, 2);
+        target.push_back(p);
     };
 
-    auto addIntParam = [&](const QString& key, const QString& labelText, int minV, int maxV, int defV, int stepV, const QString& listPlaceholder) {
+    auto addIntParamTo = [&](QGridLayout* grid, QVector<SweepParamWidgets>& target,
+                             const QString& key, const QString& labelText,
+                             int minV, int maxV, int defV, int stepV, const QString& listPlaceholder) {
         SweepParamWidgets p;
         p.key = key;
         p.label = labelText;
@@ -501,25 +493,89 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         connectSpinChanged(p.rangeStepInt);
         connectSpinChanged(p.listEdit);
 
-        const int row = expParamsGrid->rowCount();
-        expParamsGrid->addWidget(name, row, 0);
-        expParamsGrid->addWidget(p.mode, row, 1);
-        expParamsGrid->addWidget(p.stack, row, 2);
-        sweepParams_.push_back(p);
+        const int row = grid->rowCount();
+        grid->addWidget(name, row, 0);
+        grid->addWidget(p.mode, row, 1);
+        grid->addWidget(p.stack, row, 2);
+        target.push_back(p);
     };
 
-    // Order matters for the Cartesian product (outer -> inner).
-    addDoubleParam("u0", "u0", -2.0, 2.0, 0.05, 6, 0.01);
-    addDoubleParam("con0", "con0", 0.0, 1.0, 0.2, 6, 0.01);
-    addDoubleParam("sig", "sig", 0.0, 2.0, 0.05, 6, 0.01);
-    addDoubleParam("dt", "dt", 1e-6, 1.0, 0.05, 6, 0.01);
-    addDoubleParam("dx", "dx", 1e-6, 10.0, 0.125, 6, 0.01);
+    // -- Helper to build a model sub-tab page with a Parameters group --
+    auto makeModelPage = [&](QVector<SweepParamWidgets>& target) -> std::pair<QWidget*, QGridLayout*> {
+        auto* page = new QWidget;
+        auto* pageLayout = new QVBoxLayout;
+        pageLayout->setSpacing(6);
+        page->setLayout(pageLayout);
 
-    addIntParam("steps", "steps", 1, 100000000, 200, 10, "e.g. 100,200,300");
-    addIntParam("mod", "mod", 1, 100000000, 25, 1, "e.g. 25,50,100");
-    addIntParam("seed", "seed", 0, 2147483647, 20200604, 1, "e.g. 1,2,3");
+        auto* box = new QGroupBox("Parameters");
+        auto* grid = new QGridLayout;
+        grid->setVerticalSpacing(6);
+        grid->setHorizontalSpacing(12);
+        grid->setColumnStretch(2, 1);
 
-    expParamsBox->setLayout(expParamsGrid);
+        grid->addWidget(header("Param"), 0, 0);
+        grid->addWidget(header("Mode"), 0, 1);
+        grid->addWidget(header("Values"), 0, 2);
+
+        target.clear();
+        target.reserve(16);
+
+        box->setLayout(grid);
+        pageLayout->addWidget(box);
+        pageLayout->addStretch(1);
+        return {page, grid};
+    };
+
+    // -- Create the sub-tab widget --
+    experimentSubTabs_ = new QTabWidget;
+    experimentSubTabs_->setDocumentMode(true);
+
+    // --- Misfit sub-tab ---
+    {
+        auto [page, grid] = makeModelPage(sweepParamsMisfit_);
+        addDoubleParamTo(grid, sweepParamsMisfit_, "u0",   "u0",   -2.0, 2.0,  0.05,  6, 0.01);
+        addDoubleParamTo(grid, sweepParamsMisfit_, "con0", "con0",  0.0, 1.0,  0.2,   6, 0.01);
+        addDoubleParamTo(grid, sweepParamsMisfit_, "sig",  "sig",   0.0, 2.0,  0.05,  6, 0.01);
+        addDoubleParamTo(grid, sweepParamsMisfit_, "dt",   "dt",   1e-6, 1.0,  0.05,  6, 0.01);
+        addDoubleParamTo(grid, sweepParamsMisfit_, "dx",   "dx",   1e-6, 10.0, 0.125, 6, 0.01);
+        addIntParamTo(grid, sweepParamsMisfit_, "steps", "steps", 1, 100000000, 200,      10, "e.g. 100,200,300");
+        addIntParamTo(grid, sweepParamsMisfit_, "mod",   "mod",   1, 100000000, 25,       1,  "e.g. 25,50,100");
+        addIntParamTo(grid, sweepParamsMisfit_, "seed",  "seed",  0, 2147483647, 20200604, 1, "e.g. 1,2,3");
+        experimentSubTabs_->addTab(page, "Misfit");
+    }
+
+    // --- CVD sub-tab ---
+    {
+        auto [page, grid] = makeModelPage(sweepParamsCvd_);
+        addDoubleParamTo(grid, sweepParamsCvd_, "u0",   "u0",   -2.0, 2.0,  0.01,  6, 0.01);
+        addDoubleParamTo(grid, sweepParamsCvd_, "con0", "con0",  0.0, 1.0,  0.2,   6, 0.01);
+        addDoubleParamTo(grid, sweepParamsCvd_, "sig",  "sig",   0.0, 2.0,  0.03,  6, 0.01);
+        addDoubleParamTo(grid, sweepParamsCvd_, "dt",   "dt",   1e-6, 1.0,  0.05,  6, 0.01);
+        addDoubleParamTo(grid, sweepParamsCvd_, "dx",   "dx",   1e-6, 10.0, 0.125, 6, 0.01);
+        addIntParamTo(grid, sweepParamsCvd_, "steps", "steps", 1, 100000000, 2000,     10, "e.g. 100,200,300");
+        addIntParamTo(grid, sweepParamsCvd_, "mod",   "mod",   1, 100000000, 200,      1,  "e.g. 25,50,100");
+        addIntParamTo(grid, sweepParamsCvd_, "seed",  "seed",  0, 2147483647, 20200604, 1, "e.g. 1,2,3");
+        experimentSubTabs_->addTab(page, "CVD");
+    }
+
+    // --- Elastic sub-tab ---
+    {
+        auto [page, grid] = makeModelPage(sweepParamsElastic_);
+        addDoubleParamTo(grid, sweepParamsElastic_, "u0",      "u0",      -2.0, 2.0,  0.05,  6, 0.01);
+        addDoubleParamTo(grid, sweepParamsElastic_, "con0",    "con0",     0.0, 1.0,  0.2,   6, 0.01);
+        addDoubleParamTo(grid, sweepParamsElastic_, "sig",     "sig",      0.0, 2.0,  0.05,  6, 0.01);
+        addDoubleParamTo(grid, sweepParamsElastic_, "dt",      "dt",      1e-6, 1.0,  0.1,   6, 0.01);
+        addDoubleParamTo(grid, sweepParamsElastic_, "dx",      "dx",      1e-6, 10.0, 0.125, 6, 0.01);
+        addIntParamTo(grid, sweepParamsElastic_, "steps", "steps", 1, 100000000, 2002,     10, "e.g. 100,200,300");
+        addIntParamTo(grid, sweepParamsElastic_, "mod",   "mod",   1, 100000000, 200,      1,  "e.g. 25,50,100");
+        addIntParamTo(grid, sweepParamsElastic_, "seed",  "seed",  0, 2147483647, 20200604, 1, "e.g. 1,2,3");
+        addDoubleParamTo(grid, sweepParamsElastic_, "benchel", "benchel",  0.0, 100.0, 1.7, 6, 0.1);
+        experimentSubTabs_->addTab(page, "Elastic");
+    }
+
+    connect(experimentSubTabs_, &QTabWidget::currentChanged, this, [this](int) {
+        updateExperimentPreview();
+    });
 
     auto* expOutBox = new QGroupBox("Output");
     auto* expOutForm = new QFormLayout;
@@ -558,24 +614,24 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* expButtons = new QWidget;
     auto* expButtonsLayout = new QHBoxLayout;
     expButtonsLayout->setContentsMargins(0, 0, 0, 0);
-    auto* expRun = new QPushButton("Run");
-    auto* expStop = new QPushButton("Stop");
+    expRunBtn_ = new QPushButton("Run");
+    expStopBtn_ = new QPushButton("Stop");
     auto* expOpenOut = new QPushButton("Open Output");
-    expRun->setProperty("primary", true);
-    expStop->setProperty("danger", true);
-    expRun->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
-    expStop->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
+    expRunBtn_->setProperty("primary", true);
+    expStopBtn_->setProperty("danger", true);
+    expRunBtn_->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
+    expStopBtn_->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
     expOpenOut->setIcon(style()->standardIcon(QStyle::SP_DirOpenIcon));
-    connect(expRun, &QPushButton::clicked, this, &MainWindow::startExperiment);
-    connect(expStop, &QPushButton::clicked, this, &MainWindow::stopRun);
+    connect(expRunBtn_, &QPushButton::clicked, this, &MainWindow::startExperiment);
+    connect(expStopBtn_, &QPushButton::clicked, this, &MainWindow::stopRun);
     connect(expOpenOut, &QPushButton::clicked, this, &MainWindow::openCurrentOutputDir);
-    expButtonsLayout->addWidget(expRun);
-    expButtonsLayout->addWidget(expStop);
+    expButtonsLayout->addWidget(expRunBtn_);
+    expButtonsLayout->addWidget(expStopBtn_);
     expButtonsLayout->addStretch(1);
     expButtonsLayout->addWidget(expOpenOut);
     expButtons->setLayout(expButtonsLayout);
 
-    expLayout->addWidget(expParamsBox);
+    expLayout->addWidget(experimentSubTabs_);
     expLayout->addWidget(expPreview_);
     expLayout->addWidget(expOutBox);
     expLayout->addWidget(expStepProgress_);
@@ -677,7 +733,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     plotTopLayout->addWidget(imageExport);
     plotTopRow->setLayout(plotTopLayout);
 
-    resultsImageInfo_ = new QLabel("Select a Phimax_*.txt snapshot file to render.");
+    resultsImageInfo_ = new QLabel("Select a Phimax_*.txt, strain_*.txt, or cryst_*.txt file to render.");
     resultsImageInfo_->setProperty("hint", true);
     resultsImageInfo_->setWordWrap(true);
 
@@ -828,8 +884,14 @@ QString MainWindow::cliPath() const {
 #endif
     const QString dir = QCoreApplication::applicationDirPath();
     const QString candidate = QDir(dir).filePath(cliName);
-    if (QFileInfo::exists(candidate)) return candidate;
-    return candidate;
+    QFileInfo fi(candidate);
+    if (fi.exists() && fi.isExecutable()) return candidate;
+
+    // Fallback: search PATH
+    const QString fromPath = QStandardPaths::findExecutable(cliName);
+    if (!fromPath.isEmpty()) return fromPath;
+
+    return candidate;  // return best guess even if not found
 }
 
 QString MainWindow::defaultBaseOutputDir() const {
@@ -905,7 +967,7 @@ void MainWindow::resetResultsViewState() {
         resultsImagePointSize_->setEnabled(false);
     }
     if (resultsImageInfo_) {
-        resultsImageInfo_->setText("Select a Phimax_*.txt snapshot file to render.");
+        resultsImageInfo_->setText("Select a Phimax_*.txt, strain_*.txt, or cryst_*.txt file to render.");
     }
     if (resultsImageItem_) {
         resultsImageItem_->setPixmap(QPixmap());
@@ -1011,7 +1073,7 @@ void MainWindow::loadResultsFile(const QString& filePath) {
         resultsImagePointSize_->setEnabled(false);
     }
     if (resultsImageInfo_) {
-        resultsImageInfo_->setText("Select a Phimax_*.txt snapshot file to render.");
+        resultsImageInfo_->setText("Select a Phimax_*.txt, strain_*.txt, or cryst_*.txt file to render.");
     }
     if (resultsImageItem_) {
         resultsImageItem_->setPixmap(QPixmap());
@@ -1027,6 +1089,9 @@ void MainWindow::loadResultsFile(const QString& filePath) {
     const QString name = QFileInfo(filePath).fileName();
     const QString base = name.toLower();
     const bool isPhimaxSnapshot = base.startsWith("phimax_") || base.startsWith("phimaxq4q6_") || base.startsWith("phimaxq");
+    const bool isStrainSnapshot = base.startsWith("strain_");
+    const bool isCrystSnapshot = base.startsWith("cryst_q") || base.startsWith("q4q6_");
+    const bool isPlottableSnapshot = isPhimaxSnapshot || isStrainSnapshot || isCrystSnapshot;
 
     if (base == "run_config.txt") {
         QTextStream in(&f);
@@ -1210,7 +1275,7 @@ void MainWindow::loadResultsFile(const QString& filePath) {
 
     constexpr int kMaxTableRowsDefault = 20000;
     constexpr int kMaxTableRowsSnapshot = 5000;
-    const int maxTableRows = isPhimaxSnapshot ? kMaxTableRowsSnapshot : kMaxTableRowsDefault;
+    const int maxTableRows = isPlottableSnapshot ? kMaxTableRowsSnapshot : kMaxTableRowsDefault;
     const int displayRows = std::min(static_cast<int>(rows.size()), maxTableRows);
 
     resultsTable_->setSortingEnabled(false);
@@ -1248,6 +1313,19 @@ void MainWindow::loadResultsFile(const QString& filePath) {
             if (c == 5) return "q4";
             if (c == 6) return "q6";
         }
+        if (isStrainSnapshot) {
+            if (c == 0) return "label";
+            if (c == 1) return "x";
+            if (c == 2) return "y";
+            if (c == 3) return "z";
+            if (c == 4) return "strain";
+        }
+        if (isCrystSnapshot) {
+            if (c == 0) return "atom_id";
+            if (c == 1) return "Nb";
+            if (c == 2) return "Ql_local";
+            if (c == 3) return "Ql_global";
+        }
         if (base.contains("checkpoint")) {
             if (c == 0) return "step";
             if (c == 1) return "timestamp_ms";
@@ -1260,13 +1338,21 @@ void MainWindow::loadResultsFile(const QString& filePath) {
     for (int c = 0; c < maxCols; ++c) headers << colLabel(c);
     resultsTable_->setHorizontalHeaderLabels(headers);
 
-    if (isPhimaxSnapshot) {
+    if (isPlottableSnapshot) {
         if (resultsImageValue_) {
             resultsImageValue_->clear();
-            if (maxCols >= 4) resultsImageValue_->addItem("phimax", 3);
-            if (maxCols >= 5) resultsImageValue_->addItem("con", 4);
-            if (maxCols >= 6) resultsImageValue_->addItem("q4", 5);
-            if (maxCols >= 7) resultsImageValue_->addItem("q6", 6);
+            if (isPhimaxSnapshot) {
+                if (maxCols >= 4) resultsImageValue_->addItem("phimax", 3);
+                if (maxCols >= 5) resultsImageValue_->addItem("con", 4);
+                if (maxCols >= 6) resultsImageValue_->addItem("q4", 5);
+                if (maxCols >= 7) resultsImageValue_->addItem("q6", 6);
+            } else if (isStrainSnapshot) {
+                if (maxCols >= 5) resultsImageValue_->addItem("strain", 4);
+            } else if (isCrystSnapshot) {
+                if (maxCols >= 3) resultsImageValue_->addItem("Ql_local", 2);
+                if (maxCols >= 4) resultsImageValue_->addItem("Ql_global", 3);
+                if (maxCols >= 2) resultsImageValue_->addItem("Nb", 1);
+            }
             resultsImageValue_->setEnabled(resultsImageValue_->count() > 0);
         }
         if (resultsImagePointSize_) {
@@ -1634,7 +1720,7 @@ void MainWindow::fitResultsImage() {
 void MainWindow::exportResultsImage() {
     if (!resultsImageItem_ || resultsImageItem_->pixmap().isNull()) {
         appendLog("=== Visualizer: Export requested but no image is available ===");
-        QMessageBox::information(this, "Export image", "No image to export. Select a Phimax_*.txt file first.");
+        QMessageBox::information(this, "Export image", "No image to export. Select a plottable snapshot file first.");
         return;
     }
 
@@ -1661,6 +1747,11 @@ void MainWindow::exportResultsImage() {
 QStringList MainWindow::buildArgs(const RunParams& params, const QString& outDir) const {
     auto f = [](double v) { return QString::number(v, 'g', 10); };
     QStringList args;
+    switch (params.model) {
+        case PfcModel::CVD:     args << "--model" << "cvd";     break;
+        case PfcModel::Elastic: args << "--model" << "elastic"; break;
+        default:                args << "--model" << "misfit";  break;
+    }
     args << "--u0" << f(params.u0);
     args << "--con0" << f(params.con0);
     args << "--sig" << f(params.sig);
@@ -1669,6 +1760,9 @@ QStringList MainWindow::buildArgs(const RunParams& params, const QString& outDir
     args << "--steps" << QString::number(params.steps);
     args << "--mod" << QString::number(params.mod);
     args << "--seed" << QString::number(params.seed);
+    if (params.model == PfcModel::Elastic) {
+        args << "--benchel" << f(params.benchel);
+    }
     args << "--outdir" << outDir;
     return args;
 }
@@ -1680,7 +1774,15 @@ bool MainWindow::writeParamsJson(const RunJob& job, QString* errorOut) const {
     obj["run_total"] = job.total;
     obj["out_dir"] = job.outDir;
 
+    QString modelStr;
+    switch (job.params.model) {
+        case PfcModel::CVD:     modelStr = "cvd";     break;
+        case PfcModel::Elastic: modelStr = "elastic"; break;
+        default:                modelStr = "misfit";  break;
+    }
+
     QJsonObject p;
+    p["model"] = modelStr;
     p["u0"] = job.params.u0;
     p["con0"] = job.params.con0;
     p["sig"] = job.params.sig;
@@ -1689,6 +1791,9 @@ bool MainWindow::writeParamsJson(const RunJob& job, QString* errorOut) const {
     p["steps"] = job.params.steps;
     p["mod"] = job.params.mod;
     p["seed"] = job.params.seed;
+    if (job.params.model == PfcModel::Elastic) {
+        p["benchel"] = job.params.benchel;
+    }
     obj["params"] = p;
 
     const QString path = QDir(job.outDir).filePath("params.json");
@@ -1832,6 +1937,10 @@ QVector<RunJob> MainWindow::buildExperimentJobs(const QString& baseDir, const QS
     }
     const QString experimentRoot = QDir(baseDir).filePath(experimentName);
 
+    // Resolve the active model and its sweep params
+    const PfcModel model = const_cast<MainWindow*>(this)->activeModel();
+    const QVector<SweepParamWidgets>& activeSweep = const_cast<MainWindow*>(this)->activeModelParams();
+
     struct ParamValues {
         QString key;
         bool isInt = false;
@@ -1840,7 +1949,7 @@ QVector<RunJob> MainWindow::buildExperimentJobs(const QString& baseDir, const QS
     };
 
     QVector<ParamValues> params;
-    params.reserve(sweepParams_.size());
+    params.reserve(activeSweep.size());
 
     auto addValuesOrFail = [&](const SweepParamWidgets& p) -> bool {
         if (!p.mode || !p.stack) return true;
@@ -1909,7 +2018,7 @@ QVector<RunJob> MainWindow::buildExperimentJobs(const QString& baseDir, const QS
         return true;
     };
 
-    for (const auto& p : sweepParams_) {
+    for (const auto& p : activeSweep) {
         if (!addValuesOrFail(p)) return {};
     }
 
@@ -1937,6 +2046,7 @@ QVector<RunJob> MainWindow::buildExperimentJobs(const QString& baseDir, const QS
         else if (key == "sig") rp.sig = v;
         else if (key == "dt") rp.dt = v;
         else if (key == "dx") rp.dx = v;
+        else if (key == "benchel") rp.benchel = v;
     };
     auto applyParamInt = [](RunParams& rp, const QString& key, int v) {
         if (key == "steps") rp.steps = v;
@@ -1952,6 +2062,7 @@ QVector<RunJob> MainWindow::buildExperimentJobs(const QString& baseDir, const QS
 
     for (long long i = 0; i < total; ++i) {
         RunParams rp;
+        rp.model = model;
         for (int pi = 0; pi < params.size(); ++pi) {
             const auto& pv = params.at(pi);
             if (pv.isInt) applyParamInt(rp, pv.key, pv.ivals.at(indices.at(pi)));
@@ -2007,8 +2118,27 @@ void MainWindow::updateStatusLogText() {
     logStatusButton_->setToolTip(statusLogTooltip_.isEmpty() ? full : statusLogTooltip_);
 }
 
+PfcModel MainWindow::activeModel() const {
+    if (!experimentSubTabs_) return PfcModel::Misfit;
+    switch (experimentSubTabs_->currentIndex()) {
+        case 1:  return PfcModel::CVD;
+        case 2:  return PfcModel::Elastic;
+        default: return PfcModel::Misfit;
+    }
+}
+
+QVector<MainWindow::SweepParamWidgets>& MainWindow::activeModelParams() {
+    switch (activeModel()) {
+        case PfcModel::CVD:     return sweepParamsCvd_;
+        case PfcModel::Elastic: return sweepParamsElastic_;
+        default:                return sweepParamsMisfit_;
+    }
+}
+
 void MainWindow::setRunningUi(bool running) {
-    (void)running;
+    if (expRunBtn_) expRunBtn_->setEnabled(!running);
+    if (expStopBtn_) expStopBtn_->setEnabled(running);
+    if (experimentSubTabs_) experimentSubTabs_->setEnabled(!running);
 }
 
 void MainWindow::resizeEvent(QResizeEvent* event) {
@@ -2108,6 +2238,7 @@ void MainWindow::startExperiment() {
     }
     currentJobIndex_ = 0;
     if (expProgress_) expProgress_->setValue(0);
+    setRunningUi(true);
     launchJob(jobQueue_.at(currentJobIndex_));
 }
 
@@ -2118,6 +2249,7 @@ void MainWindow::stopRun() {
     currentJobTotalSteps_ = 0;
     if (expStepProgress_) expStepProgress_->setValue(0);
     if (expProgress_) expProgress_->setValue(0);
+    setRunningUi(false);
     if (!process_) return;
     appendLog("=== Stop requested ===");
     process_->kill();
@@ -2140,10 +2272,12 @@ void MainWindow::updateExperimentPreview() {
     if (!expPreview_) return;
     const int maxRuns = 5000;
 
+    QVector<SweepParamWidgets>& activeSweep = activeModelParams();
+
     long long total = 1;
     QStringList varied;
 
-    for (auto& p : sweepParams_) {
+    for (auto& p : activeSweep) {
         if (!p.mode || !p.stack) continue;
 
         const int mode = p.mode->currentIndex(); // 0 fixed, 1 range, 2 list
@@ -2466,6 +2600,7 @@ void MainWindow::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus
         appendLog("=== Experiment aborted due to failure ===");
         jobQueue_.clear();
         currentJobIndex_ = -1;
+        setRunningUi(false);
         return;
     }
 
@@ -2477,6 +2612,7 @@ void MainWindow::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus
         if (expProgress_) expProgress_->setValue(100);
         currentJobMode_.clear();
         currentJobTotalSteps_ = 0;
+        setRunningUi(false);
         return;
     }
 
