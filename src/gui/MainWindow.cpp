@@ -870,8 +870,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
         auto* elasticFlowHint = new QLabel(
             "Elastic Analysis 不是前向求解器，而是后处理入口：读取已有的 phi_*.vti / con_*.vti，输出 "
-            "Phimax_*.txt / strain_*.txt。推荐直接对 CVD 输出目录运行；当前 GUI 版 Misfit 默认不会持续写入 "
-            "checkpoint VTI，所以通常不适合作为 Elastic 输入。");
+            "Phimax_*.txt / strain_*.txt。当前版本的 Misfit 和 CVD 都会按 checkpoint 写出这些 VTI，"
+            "因此两条链路都可直接接到 Elastic Analysis。");
         elasticFlowHint->setProperty("hint", true);
         elasticFlowHint->setWordWrap(true);
         elasticLayout->addWidget(elasticFlowHint);
@@ -1230,7 +1230,7 @@ void MainWindow::updateElasticInputSummary() {
     if (steps.isEmpty()) {
         elasticInputSummary_->setText(
             "未检测到成对的 phi_*.vti / con_*.vti checkpoint。Elastic 只能读取这类 VTI 输入；"
-            "当前 GUI 里 CVD 会持续写这些文件，而 Misfit 默认不会。");
+            "请确认该目录来自当前版本的 Misfit/CVD 运行，并且确实完成了 checkpoint 输出。");
         return;
     }
 
@@ -2679,8 +2679,8 @@ void MainWindow::startElasticAnalysis() {
             this,
             "Elastic Analysis",
             "No usable checkpoint VTI pairs were found in the selected input directory.\n\n"
-            "Elastic needs phi_*.vti / con_*.vti files. In the current GUI, CVD writes these checkpoints continuously, "
-            "while Misfit usually does not.");
+            "Elastic needs phi_*.vti / con_*.vti files. Please make sure the directory comes from a recent Misfit/CVD run "
+            "that actually finished writing checkpoints.");
         return;
     }
 

@@ -368,6 +368,7 @@ ofstream checkpoint_log;
 
 	    ofstream run_cfg("run_config.txt", ios::out | ios::trunc);
 	    if (run_cfg.is_open()) {
+	        run_cfg << "model misfit\n";
 	        run_cfg << "u0 " << u0 << "\n";
 	        run_cfg << "con0 " << con0 << "\n";
 	        run_cfg << "sig " << sig << "\n";
@@ -510,10 +511,10 @@ PVTKWRITEC(local_n0,numprocs,0,N,Pnamec);
 // if(t==500) {sig=0.02;mod=5000;INITIAL_con(con,local_n0);}
                 kd = output_step;
 				phimax_atmposi(phi, con, local_n0, local_0_start, myid, numprocs);
-				//sVTKwriteBianry(phi, local_n0, local_0_start, myid, numprocs);
-				//PVTKWRITE(local_n0, numprocs, 0, N, Pname);
-				//sVTKwriteBianryc(con, local_n0, local_0_start, myid, numprocs);
-				//PVTKWRITEC(local_n0, numprocs, 0, N, Pnamec);
+				sVTKwriteBianry(phi, local_n0, local_0_start, myid, numprocs);
+				PVTKWRITE(local_n0, numprocs, 0, N, Pname);
+				sVTKwriteBianryc(con, local_n0, local_0_start, myid, numprocs);
+				PVTKWRITEC(local_n0, numprocs, 0, N, Pnamec);
 
 				// Write checkpoint timestamp (rank 0 only)
 				if (myid == 0 && checkpoint_log.is_open()) {
@@ -3933,5 +3934,4 @@ static void cryst_order(double *drbuf_x, double *drbuf_y, double *drbuf_z, doubl
 	free(sij);
 
 }
-
 

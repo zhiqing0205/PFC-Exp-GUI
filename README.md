@@ -16,7 +16,7 @@
 - Elastic Analysis：选择已有输出目录中的 `phi_*.vti / con_*.vti`，自动检测 checkpoint，并输出 `Phimax_*.txt / strain_*.txt`。
 - 可视化：查看输出目录中的 `*.txt`；对 `Phimax_*.txt` 等快照可渲染热图并导出 PNG。
 - 每次运行都会在输出目录写入 `params.json`（GUI 生成）与 `run_config.txt`（CLI 写入）。
-- 当前默认流程更偏向 `CVD -> Elastic Analysis`；因为当前 GUI 版 `misfit` 默认不会持续写出供 Elastic 消费的 VTI checkpoint。
+- 当前版本中，`Misfit` 与 `CVD` 都会持续写出供 `Elastic Analysis` 消费的 VTI checkpoint。
 
 ## 构建（CMake）
 

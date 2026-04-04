@@ -216,12 +216,12 @@
 - 会做时步推进
 - 当前 GUI 接入版里主要输出 `Phimax_*.txt`
 - 初始化时会写一次 `phi/con` VTI
-- 但循环里原本持续写 `phi/con` VTI 的代码现在被注释掉了
+- 现在循环里也会持续写 `phi/con` VTI checkpoint
 
 因此：
 
 - 它仍然是主求解器
-- 但它当前不像 `cvd` 那样持续产出供 `elastic` 消费的 VTI checkpoint
+- 并且现在也能持续产出供 `elastic` 消费的 VTI checkpoint
 
 ---
 
@@ -312,11 +312,12 @@
 3. `Elastic Analysis`
 4. `Visualizer`
 
-其中当前最通顺的默认链路依然是：
+其中现在已经打通的链路是：
 
+- `Misfit -> Elastic Analysis -> Visualizer`
 - `CVD -> Elastic Analysis -> Visualizer`
 
-因为当前 GUI 接入版 `misfit` 仍没有像 `cvd` 那样稳定地持续输出供 elastic 消费的 VTI checkpoint。
+也就是说从这次调整之后，`misfit` 也会按 checkpoint 持续写出供 `elastic` 消费的 `phi/con .vti`。
 
 也就是说：
 
@@ -357,11 +358,11 @@
 
 ### 当前 GUI 版 `misfit -> elastic`
 
-链路不太顺，因为当前 `misfit` 在循环中把后续 checkpoint VTI 输出注释掉了，只保留了初始 VTI 与 `Phimax_*.txt` 相关输出。
+链路现在已经打通，因为 `misfit` 也会在循环中继续写出后续 checkpoint VTI。
 
 所以现实上更像：
 
-- CVD 产出 checkpoint
+- Misfit / CVD 都能产出 checkpoint
 - Elastic 做下游分析
 
 ---

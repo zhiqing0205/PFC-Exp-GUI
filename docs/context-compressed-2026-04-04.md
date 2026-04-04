@@ -22,12 +22,12 @@
 
 ## 实际依赖关系
 
+- `misfit` 会持续写 `phi_*.vti / con_*.vti`
 - `cvd` 会持续写 `phi_*.vti / con_*.vti`
 - `elastic` 会读取这些 `.vti`
-- 当前 GUI 版 `misfit` 循环中的 checkpoint VTI 输出基本被注释了
-- 因此现实上更像：
-  - `cvd -> elastic` 通
-  - `misfit -> elastic` 目前不太顺
+- 因此现在两条链都能走：
+  - `cvd -> elastic`
+  - `misfit -> elastic`
 
 ## `ref/` 目录状态
 
@@ -84,6 +84,7 @@
 - `Elastic Analysis`：读取已有 VTI 做应变/结构后处理
 - `Visualizer`：查看 `Phimax_*.txt / strain_*.txt / q4q6_*.txt`
 
-### 当前更稳定的链路
+### 当前可用链路
 
+- `Misfit -> Elastic Analysis -> Visualizer`
 - `CVD -> Elastic Analysis -> Visualizer`
