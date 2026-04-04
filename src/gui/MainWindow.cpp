@@ -38,6 +38,7 @@
 #include <QTextStream>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSet>
 #include <QSplitter>
 #include <QSpinBox>
 #include <QStackedWidget>
@@ -138,6 +139,10 @@ static QString pickSavePngFile(QWidget* parent, const QString& caption, const QS
     return selected.first();
 }
 
+static QHash<QString, QString> parseKeyValueTextFile(const QString& filePath);
+static QString summarizeCheckpointSteps(const QVector<int>& steps, int maxItems = 8);
+static int inferElasticModFromSteps(const QVector<int>& steps);
+
 class ZoomableGraphicsView final : public QGraphicsView {
 public:
     using QGraphicsView::QGraphicsView;
@@ -185,6 +190,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resize(1100, 920);
 
     auto* tabs = new QTabWidget;
+    mainTabs_ = tabs;
     tabs->setObjectName("mainTabs");
     tabs->setDocumentMode(true);
     tabs->setUsesScrollButtons(true);
@@ -239,11 +245,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     mechanicsScroll->setWidgetResizable(true);
     mechanicsScroll->setWidget(mechanicsTab);
 
-    tabs->addTab(expScroll, "Experiment");
+    tabs->addTab(expScroll, "Simulation");
     tabs->addTab(resultsScroll, "Visualizer");
     tabs->addTab(manufacturingScroll, "Manufacturing");
     tabs->addTab(transformationScroll, "Transformation");
-    tabs->addTab(mechanicsScroll, "Stress–Strain");
+    elasticMainTabIndex_ = tabs->addTab(mechanicsScroll, "Elastic Analysis");
 
     connect(tabs, &QTabWidget::currentChanged, this, [this, tabs, resultsScroll](int) {
         if (!resultsScroll) return;
@@ -558,24 +564,15 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         experimentSubTabs_->addTab(page, "CVD");
     }
 
-    // --- Elastic sub-tab ---
-    {
-        auto [page, grid] = makeModelPage(sweepParamsElastic_);
-        addDoubleParamTo(grid, sweepParamsElastic_, "u0",      "u0",      -2.0, 2.0,  0.05,  6, 0.01);
-        addDoubleParamTo(grid, sweepParamsElastic_, "con0",    "con0",     0.0, 1.0,  0.2,   6, 0.01);
-        addDoubleParamTo(grid, sweepParamsElastic_, "sig",     "sig",      0.0, 2.0,  0.05,  6, 0.01);
-        addDoubleParamTo(grid, sweepParamsElastic_, "dt",      "dt",      1e-6, 1.0,  0.1,   6, 0.01);
-        addDoubleParamTo(grid, sweepParamsElastic_, "dx",      "dx",      1e-6, 10.0, 0.125, 6, 0.01);
-        addIntParamTo(grid, sweepParamsElastic_, "steps", "steps", 1, 100000000, 2002,     10, "e.g. 100,200,300");
-        addIntParamTo(grid, sweepParamsElastic_, "mod",   "mod",   1, 100000000, 200,      1,  "e.g. 25,50,100");
-        addIntParamTo(grid, sweepParamsElastic_, "seed",  "seed",  0, 2147483647, 20200604, 1, "e.g. 1,2,3");
-        addDoubleParamTo(grid, sweepParamsElastic_, "benchel", "benchel",  0.0, 100.0, 1.7, 6, 0.1);
-        experimentSubTabs_->addTab(page, "Elastic");
-    }
-
     connect(experimentSubTabs_, &QTabWidget::currentChanged, this, [this](int) {
         updateExperimentPreview();
     });
+
+    auto* simFlowHint = new QLabel(
+        "Misfit / CVD 是主仿真模型；Elastic 现在单独放到“Elastic Analysis”页，因为它会读取已有的 "
+        "phi_*.vti / con_*.vti 做后处理，而不是直接产出这些场。");
+    simFlowHint->setProperty("hint", true);
+    simFlowHint->setWordWrap(true);
 
     auto* expOutBox = new QGroupBox("Output");
     auto* expOutForm = new QFormLayout;
@@ -631,6 +628,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     expButtonsLayout->addWidget(expOpenOut);
     expButtons->setLayout(expButtonsLayout);
 
+    expLayout->addWidget(simFlowHint);
     expLayout->addWidget(experimentSubTabs_);
     expLayout->addWidget(expPreview_);
     expLayout->addWidget(expOutBox);
@@ -659,11 +657,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resultsRefresh->setToolTip("Refresh file list");
     auto* resultsUseCurrent = new QPushButton("Use Current Output");
     resultsUseCurrent->setIcon(style()->standardIcon(QStyle::SP_DialogApplyButton));
+    auto* resultsToElastic = new QPushButton("Elastic Analysis…");
+    resultsToElastic->setIcon(style()->standardIcon(QStyle::SP_ArrowForward));
 
     resultsDirRow->addWidget(resultsDir_, 1);
     resultsDirRow->addWidget(resultsBrowse);
     resultsDirRow->addWidget(resultsRefresh);
     resultsDirRow->addWidget(resultsUseCurrent);
+    resultsDirRow->addWidget(resultsToElastic);
     resultsDirBox->setLayout(resultsDirRow);
     resultsLayout->addWidget(resultsDirBox);
 
@@ -787,6 +788,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(resultsUseCurrent, &QPushButton::clicked, this, [this]() {
         if (!currentOutputDir_.isEmpty()) setResultsDir(currentOutputDir_);
     });
+    connect(resultsToElastic, &QPushButton::clicked, this, [this]() {
+        useVisualizerDirForElastic();
+    });
     connect(resultsDir_, &QLineEdit::editingFinished, this, [this]() { refreshResultsFileList(); });
     connect(resultsFiles_, &QListWidget::currentTextChanged, this, [this](const QString& fileName) {
         if (fileName.trimmed().isEmpty()) return;
@@ -859,20 +863,155 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             << "Compare checkpoint snapshots (Δ images / metrics)"
             << "Optional peak-based orientation/defect analysis");
 
-    setupRoadmapTab(
-        mechanicsTab,
-        "Stress–Strain",
-        "Planned mechanical loading helpers. This page is a placeholder.",
-        QStringList()
-            << "Uniaxial / shear loading presets (small-scale demos)"
-            << "Stress–strain curve export (CSV + plots)"
-            << "Batch sweep on loading rate / amplitude");
+    {
+        auto* elasticLayout = new QVBoxLayout;
+        elasticLayout->setSpacing(10);
+        mechanicsTab->setLayout(elasticLayout);
+
+        auto* elasticFlowHint = new QLabel(
+            "Elastic Analysis 不是前向求解器，而是后处理入口：读取已有的 phi_*.vti / con_*.vti，输出 "
+            "Phimax_*.txt / strain_*.txt。推荐直接对 CVD 输出目录运行；当前 GUI 版 Misfit 默认不会持续写入 "
+            "checkpoint VTI，所以通常不适合作为 Elastic 输入。");
+        elasticFlowHint->setProperty("hint", true);
+        elasticFlowHint->setWordWrap(true);
+        elasticLayout->addWidget(elasticFlowHint);
+
+        elasticControls_ = new QWidget;
+        auto* elasticControlsLayout = new QVBoxLayout;
+        elasticControlsLayout->setContentsMargins(0, 0, 0, 0);
+        elasticControlsLayout->setSpacing(10);
+        elasticControls_->setLayout(elasticControlsLayout);
+
+        auto* elasticIoBox = new QGroupBox("Input / Output");
+        auto* elasticIoForm = new QFormLayout;
+
+        elasticInputDir_ = new QLineEdit;
+        elasticInputDir_->setPlaceholderText("Directory containing phi_*.vti / con_*.vti");
+        auto* elasticInputBrowse = new QToolButton;
+        elasticInputBrowse->setText("Browse…");
+        elasticInputBrowse->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        elasticInputBrowse->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
+        auto* elasticUseCurrent = new QPushButton("Use Current Output");
+        elasticUseCurrent->setIcon(style()->standardIcon(QStyle::SP_DialogApplyButton));
+        auto* elasticUseVisualizer = new QPushButton("Use Visualizer Dir");
+        elasticUseVisualizer->setIcon(style()->standardIcon(QStyle::SP_ArrowForward));
+
+        auto* elasticInputRow = new QWidget;
+        auto* elasticInputRowLayout = new QHBoxLayout;
+        elasticInputRowLayout->setContentsMargins(0, 0, 0, 0);
+        elasticInputRowLayout->addWidget(elasticInputDir_, 1);
+        elasticInputRowLayout->addWidget(elasticInputBrowse);
+        elasticInputRowLayout->addWidget(elasticUseCurrent);
+        elasticInputRowLayout->addWidget(elasticUseVisualizer);
+        elasticInputRow->setLayout(elasticInputRowLayout);
+        elasticIoForm->addRow("Input dir", elasticInputRow);
+
+        elasticOutputSameAsInput_ = new QCheckBox("Write results into input directory (recommended)");
+        elasticOutputSameAsInput_->setChecked(true);
+        elasticIoForm->addRow("", elasticOutputSameAsInput_);
+
+        elasticOutputDir_ = new QLineEdit;
+        elasticOutputDir_->setPlaceholderText("Optional separate directory for analysis TXT outputs");
+        elasticOutputBrowse_ = new QToolButton;
+        elasticOutputBrowse_->setText("Browse…");
+        elasticOutputBrowse_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        elasticOutputBrowse_->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
+
+        auto* elasticOutputRow = new QWidget;
+        auto* elasticOutputRowLayout = new QHBoxLayout;
+        elasticOutputRowLayout->setContentsMargins(0, 0, 0, 0);
+        elasticOutputRowLayout->addWidget(elasticOutputDir_, 1);
+        elasticOutputRowLayout->addWidget(elasticOutputBrowse_);
+        elasticOutputRow->setLayout(elasticOutputRowLayout);
+        elasticIoForm->addRow("Output dir", elasticOutputRow);
+
+        elasticIoBox->setLayout(elasticIoForm);
+        elasticControlsLayout->addWidget(elasticIoBox);
+
+        elasticInputSummary_ = new QLabel(
+            "选择一个包含 phi_*.vti / con_*.vti 的目录后，这里会显示检测到的 checkpoint，并尽量从 "
+            "run_config.txt 自动回填参数。");
+        elasticInputSummary_->setProperty("hint", true);
+        elasticInputSummary_->setWordWrap(true);
+        elasticControlsLayout->addWidget(elasticInputSummary_);
+
+        auto* elasticParamBox = new QGroupBox("Analysis parameters");
+        auto* elasticParamForm = new QFormLayout;
+        elasticU0_ = makeDoubleSpin(-2.0, 2.0, 0.05, 6, 0.01, true);
+        elasticCon0_ = makeDoubleSpin(0.0, 1.0, 0.2, 6, 0.01, true);
+        elasticSig_ = makeDoubleSpin(0.0, 2.0, 0.05, 6, 0.01, true);
+        elasticDt_ = makeDoubleSpin(1e-6, 1.0, 0.1, 6, 0.01, true);
+        elasticDx_ = makeDoubleSpin(1e-6, 10.0, 0.125, 6, 0.01, true);
+        elasticSteps_ = makeIntSpin(1, 100000000, 2000, 1, true);
+        elasticMod_ = makeIntSpin(1, 100000000, 200, 1, true);
+        elasticSeed_ = makeIntSpin(0, 2147483647, 20200604, 1, true);
+        elasticBenchel_ = makeDoubleSpin(0.1, 100.0, 1.7, 6, 0.1, true);
+        elasticBenchel_->setToolTip("Neighbor cutoff used by elastic3D strain analysis.");
+
+        elasticParamForm->addRow("u0", elasticU0_);
+        elasticParamForm->addRow("con0", elasticCon0_);
+        elasticParamForm->addRow("sig", elasticSig_);
+        elasticParamForm->addRow("dt", elasticDt_);
+        elasticParamForm->addRow("dx", elasticDx_);
+        elasticParamForm->addRow("steps", elasticSteps_);
+        elasticParamForm->addRow("mod", elasticMod_);
+        elasticParamForm->addRow("seed", elasticSeed_);
+        elasticParamForm->addRow("benchel", elasticBenchel_);
+        elasticParamBox->setLayout(elasticParamForm);
+        elasticControlsLayout->addWidget(elasticParamBox);
+
+        elasticLayout->addWidget(elasticControls_);
+
+        elasticStepProgress_ = new QProgressBar;
+        elasticStepProgress_->setRange(0, 1);
+        elasticStepProgress_->setValue(0);
+        elasticStepProgress_->setFormat("Step %v / %m");
+        elasticStepProgress_->setTextVisible(true);
+        elasticProgress_ = new QProgressBar;
+        elasticProgress_->setRange(0, 100);
+        elasticProgress_->setValue(0);
+
+        auto* elasticButtons = new QWidget;
+        auto* elasticButtonsLayout = new QHBoxLayout;
+        elasticButtonsLayout->setContentsMargins(0, 0, 0, 0);
+        elasticRunBtn_ = new QPushButton("Run Elastic Analysis");
+        elasticStopBtn_ = new QPushButton("Stop");
+        auto* elasticOpenOut = new QPushButton("Open Output");
+        elasticRunBtn_->setProperty("primary", true);
+        elasticStopBtn_->setProperty("danger", true);
+        elasticRunBtn_->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
+        elasticStopBtn_->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
+        elasticOpenOut->setIcon(style()->standardIcon(QStyle::SP_DirOpenIcon));
+        elasticButtonsLayout->addWidget(elasticRunBtn_);
+        elasticButtonsLayout->addWidget(elasticStopBtn_);
+        elasticButtonsLayout->addStretch(1);
+        elasticButtonsLayout->addWidget(elasticOpenOut);
+        elasticButtons->setLayout(elasticButtonsLayout);
+
+        elasticLayout->addWidget(elasticStepProgress_);
+        elasticLayout->addWidget(elasticProgress_);
+        elasticLayout->addWidget(elasticButtons);
+        elasticLayout->addStretch(1);
+
+        connect(elasticInputBrowse, &QToolButton::clicked, this, &MainWindow::browseElasticInputDir);
+        connect(elasticOutputBrowse_, &QToolButton::clicked, this, &MainWindow::browseElasticOutputDir);
+        connect(elasticUseCurrent, &QPushButton::clicked, this, [this]() { useCurrentOutputDirForElastic(); });
+        connect(elasticUseVisualizer, &QPushButton::clicked, this, [this]() { useVisualizerDirForElastic(); });
+        connect(elasticInputDir_, &QLineEdit::editingFinished, this, &MainWindow::updateElasticInputSummary);
+        connect(elasticInputDir_, &QLineEdit::textChanged, this, [this](const QString&) { updateElasticOutputDirState(); });
+        connect(elasticOutputSameAsInput_, &QCheckBox::toggled, this, [this](bool) { updateElasticOutputDirState(); });
+        connect(elasticRunBtn_, &QPushButton::clicked, this, &MainWindow::startElasticAnalysis);
+        connect(elasticStopBtn_, &QPushButton::clicked, this, &MainWindow::stopRun);
+        connect(elasticOpenOut, &QPushButton::clicked, this, &MainWindow::openCurrentOutputDir);
+    }
 
     refreshResultsFileList();
     if (expName_) connect(expName_, &QLineEdit::textChanged, this, &MainWindow::updateExperimentPreview);
     if (expBaseOutDir_) connect(expBaseOutDir_, &QLineEdit::textChanged, this, &MainWindow::updateExperimentPreview);
 
     updateExperimentPreview();
+    updateElasticOutputDirState();
+    updateElasticInputSummary();
     setRunningUi(false);
 }
 
@@ -924,6 +1063,202 @@ QString MainWindow::makeTimestampedDirName(const QString& prefix) const {
 QString MainWindow::formatRunLabel(int index, int total) const {
     if (total <= 1) return "Run";
     return QString("Run %1 / %2").arg(index).arg(total);
+}
+
+QString MainWindow::effectiveElasticOutputDir() const {
+    const QString inputDir = elasticInputDir_ ? elasticInputDir_->text().trimmed() : QString();
+    if (elasticOutputSameAsInput_ && elasticOutputSameAsInput_->isChecked()) {
+        return inputDir;
+    }
+    return elasticOutputDir_ ? elasticOutputDir_->text().trimmed() : QString();
+}
+
+QVector<int> MainWindow::detectElasticCheckpointSteps(const QString& dirPath) const {
+    QVector<int> out;
+    const QDir dir(dirPath);
+    if (!dir.exists()) return out;
+
+    const QStringList files = dir.entryList(QStringList() << "phi_*_*.vti" << "con_*_*.vti", QDir::Files, QDir::Name);
+    if (files.isEmpty()) return out;
+
+    static const QRegularExpression phiRe(R"(^phi_(\d+)_(\d+)\.vti$)", QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression conRe(R"(^con_(\d+)_(\d+)\.vti$)", QRegularExpression::CaseInsensitiveOption);
+    QSet<int> phiSteps;
+    QSet<int> conSteps;
+
+    for (const QString& file : files) {
+        if (const auto m = phiRe.match(file); m.hasMatch()) {
+            phiSteps.insert(m.captured(1).toInt());
+            continue;
+        }
+        if (const auto m = conRe.match(file); m.hasMatch()) {
+            conSteps.insert(m.captured(1).toInt());
+        }
+    }
+
+    for (const int step : phiSteps) {
+        if (conSteps.contains(step)) out.push_back(step);
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+bool MainWindow::populateElasticFieldsFromRunConfig(const QString& dirPath, QString* messageOut) const {
+    const QHash<QString, QString> cfg = parseKeyValueTextFile(QDir(dirPath).filePath("run_config.txt"));
+    if (cfg.isEmpty()) {
+        if (messageOut) *messageOut = "run_config.txt not found";
+        return false;
+    }
+
+    auto setDoubleIfPresent = [&cfg](const char* key, QDoubleSpinBox* box) {
+        if (!box) return;
+        const QString value = cfg.value(QString::fromUtf8(key));
+        if (value.isEmpty()) return;
+        bool ok = false;
+        const double parsed = value.toDouble(&ok);
+        if (ok && std::isfinite(parsed)) box->setValue(parsed);
+    };
+    auto setIntIfPresent = [&cfg](const char* key, QSpinBox* box) {
+        if (!box) return;
+        const QString value = cfg.value(QString::fromUtf8(key));
+        if (value.isEmpty()) return;
+        bool ok = false;
+        const int parsed = value.toInt(&ok);
+        if (ok) box->setValue(parsed);
+    };
+
+    setDoubleIfPresent("u0", elasticU0_);
+    setDoubleIfPresent("con0", elasticCon0_);
+    setDoubleIfPresent("sig", elasticSig_);
+    setDoubleIfPresent("dt", elasticDt_);
+    setDoubleIfPresent("dx", elasticDx_);
+    setIntIfPresent("steps", elasticSteps_);
+    setIntIfPresent("mod", elasticMod_);
+    setIntIfPresent("seed", elasticSeed_);
+
+    const QString model = cfg.value("model");
+    if (messageOut) {
+        *messageOut = model.isEmpty()
+                          ? QString("loaded run_config.txt")
+                          : QString("loaded run_config.txt (model=%1)").arg(model);
+    }
+    return true;
+}
+
+void MainWindow::updateElasticOutputDirState() {
+    if (!elasticOutputDir_ || !elasticOutputSameAsInput_) return;
+
+    const bool sameAsInput = elasticOutputSameAsInput_->isChecked();
+    if (sameAsInput) {
+        const QString inputDir = elasticInputDir_ ? elasticInputDir_->text().trimmed() : QString();
+        const QSignalBlocker blocker(elasticOutputDir_);
+        elasticOutputDir_->setText(inputDir);
+    }
+    elasticOutputDir_->setEnabled(!sameAsInput);
+    if (elasticOutputBrowse_) elasticOutputBrowse_->setEnabled(!sameAsInput);
+}
+
+void MainWindow::useCurrentOutputDirForElastic() {
+    if (!elasticInputDir_ || currentOutputDir_.trimmed().isEmpty()) return;
+    elasticInputDir_->setText(currentOutputDir_);
+    updateElasticOutputDirState();
+    updateElasticInputSummary();
+    if (mainTabs_ && elasticMainTabIndex_ >= 0) mainTabs_->setCurrentIndex(elasticMainTabIndex_);
+}
+
+void MainWindow::useVisualizerDirForElastic() {
+    if (!elasticInputDir_ || !resultsDir_) return;
+    const QString dir = resultsDir_->text().trimmed();
+    if (dir.isEmpty()) return;
+    elasticInputDir_->setText(dir);
+    updateElasticOutputDirState();
+    updateElasticInputSummary();
+    if (mainTabs_ && elasticMainTabIndex_ >= 0) mainTabs_->setCurrentIndex(elasticMainTabIndex_);
+}
+
+void MainWindow::browseElasticInputDir() {
+    if (!elasticInputDir_) return;
+    const QString base = elasticInputDir_->text().trimmed().isEmpty()
+                             ? defaultBaseOutputDir()
+                             : elasticInputDir_->text().trimmed();
+    const QString dir = pickExistingDirectory(this, "Select Elastic input directory", base);
+    if (dir.isEmpty()) return;
+    elasticInputDir_->setText(dir);
+    updateElasticOutputDirState();
+    updateElasticInputSummary();
+}
+
+void MainWindow::browseElasticOutputDir() {
+    if (!elasticOutputDir_) return;
+    const QString base = effectiveElasticOutputDir().trimmed().isEmpty()
+                             ? defaultBaseOutputDir()
+                             : effectiveElasticOutputDir().trimmed();
+    const QString dir = pickExistingDirectory(this, "Select Elastic output directory", base);
+    if (dir.isEmpty()) return;
+    elasticOutputDir_->setText(dir);
+}
+
+void MainWindow::updateElasticInputSummary() {
+    if (!elasticInputSummary_ || !elasticInputDir_) return;
+
+    const QString dirPath = elasticInputDir_->text().trimmed();
+    updateElasticOutputDirState();
+
+    if (dirPath.isEmpty()) {
+        elasticInputSummary_->setText(
+            "选择输入目录后，程序会检查是否存在成对的 phi_*.vti / con_*.vti，并自动尝试从 run_config.txt "
+            "回填 u0/con0/dx/steps/mod 等参数。");
+        return;
+    }
+
+    const QDir dir(dirPath);
+    if (!dir.exists()) {
+        elasticInputSummary_->setText("Input directory not found: " + dirPath);
+        return;
+    }
+
+    QString cfgMessage;
+    const bool loadedCfg = populateElasticFieldsFromRunConfig(dirPath, &cfgMessage);
+    const QVector<int> steps = detectElasticCheckpointSteps(dirPath);
+
+    if (!loadedCfg && !steps.isEmpty()) {
+        if (elasticSteps_) elasticSteps_->setValue(std::max(1, steps.last()));
+        const int inferredMod = inferElasticModFromSteps(steps);
+        if (elasticMod_ && inferredMod > 0) elasticMod_->setValue(inferredMod);
+    }
+
+    if (steps.isEmpty()) {
+        elasticInputSummary_->setText(
+            "未检测到成对的 phi_*.vti / con_*.vti checkpoint。Elastic 只能读取这类 VTI 输入；"
+            "当前 GUI 里 CVD 会持续写这些文件，而 Misfit 默认不会。");
+        return;
+    }
+
+    int positiveCount = 0;
+    for (const int step : steps) {
+        if (step > 0) ++positiveCount;
+    }
+
+    QStringList parts;
+    parts << QString("Detected %1 paired checkpoint step(s): %2")
+                 .arg(steps.size())
+                 .arg(summarizeCheckpointSteps(steps));
+    if (loadedCfg) {
+        parts << cfgMessage;
+    } else {
+        const int inferredMod = inferElasticModFromSteps(steps);
+        if (inferredMod > 0) {
+            parts << QString("inferred steps=%1, mod≈%2 from filenames").arg(steps.last()).arg(inferredMod);
+        } else {
+            parts << QString("inferred steps=%1 from filenames").arg(steps.last());
+        }
+    }
+    if (positiveCount <= 0) {
+        parts << "warning: only step 0 was found, so there may be no usable checkpoint history for Elastic.";
+    }
+    parts << QString("TXT outputs will be written to: %1").arg(effectiveElasticOutputDir().isEmpty() ? dirPath : effectiveElasticOutputDir());
+
+    elasticInputSummary_->setText(parts.join(" • "));
 }
 
 void MainWindow::setResultsDir(const QString& dirPath) {
@@ -1762,6 +2097,9 @@ QStringList MainWindow::buildArgs(const RunParams& params, const QString& outDir
     args << "--seed" << QString::number(params.seed);
     if (params.model == PfcModel::Elastic) {
         args << "--benchel" << f(params.benchel);
+        if (!params.inputDir.trimmed().isEmpty()) {
+            args << "--input-dir" << params.inputDir;
+        }
     }
     args << "--outdir" << outDir;
     return args;
@@ -1793,6 +2131,9 @@ bool MainWindow::writeParamsJson(const RunJob& job, QString* errorOut) const {
     p["seed"] = job.params.seed;
     if (job.params.model == PfcModel::Elastic) {
         p["benchel"] = job.params.benchel;
+        if (!job.params.inputDir.trimmed().isEmpty()) {
+            p["input_dir"] = job.params.inputDir;
+        }
     }
     obj["params"] = p;
 
@@ -1923,6 +2264,47 @@ static QString joinPreviewInts(const QVector<int>& values, int maxItems = 64) {
     QString s = parts.join(',');
     if (values.size() > shown) s += QString(",…(+%1)").arg(values.size() - shown);
     return s;
+}
+
+static QHash<QString, QString> parseKeyValueTextFile(const QString& filePath) {
+    QHash<QString, QString> out;
+    QFile f(filePath);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return out;
+
+    QTextStream in(&f);
+    while (!in.atEnd()) {
+        const QString line = in.readLine().trimmed();
+        if (line.isEmpty() || line.startsWith('#')) continue;
+        const QStringList parts = line.split(QRegularExpression(R"(\s+)"), Qt::SkipEmptyParts);
+        if (parts.isEmpty()) continue;
+        out.insert(parts.value(0).toLower(), parts.mid(1).join(' '));
+    }
+    return out;
+}
+
+static QString summarizeCheckpointSteps(const QVector<int>& steps, int maxItems) {
+    if (steps.isEmpty()) return QString();
+    const int shown = std::min(maxItems, static_cast<int>(steps.size()));
+    QStringList parts;
+    parts.reserve(shown);
+    for (int i = 0; i < shown; ++i) parts << QString::number(steps.at(i));
+    QString text = parts.join(", ");
+    if (steps.size() > shown) text += QString(", …, %1").arg(steps.last());
+    return text;
+}
+
+static int inferElasticModFromSteps(const QVector<int>& steps) {
+    QVector<int> positive;
+    positive.reserve(steps.size());
+    for (const int step : steps) {
+        if (step > 0) positive.push_back(step);
+    }
+    if (positive.isEmpty()) return 0;
+    if (positive.size() == 1) return positive.first();
+
+    const int firstDelta = positive.at(1) - positive.at(0);
+    if (firstDelta <= 0) return 0;
+    return firstDelta;
 }
 
 QVector<RunJob> MainWindow::buildExperimentJobs(const QString& baseDir, const QString& experimentName, QString* errorOut) const {
@@ -2122,7 +2504,6 @@ PfcModel MainWindow::activeModel() const {
     if (!experimentSubTabs_) return PfcModel::Misfit;
     switch (experimentSubTabs_->currentIndex()) {
         case 1:  return PfcModel::CVD;
-        case 2:  return PfcModel::Elastic;
         default: return PfcModel::Misfit;
     }
 }
@@ -2130,7 +2511,6 @@ PfcModel MainWindow::activeModel() const {
 QVector<MainWindow::SweepParamWidgets>& MainWindow::activeModelParams() {
     switch (activeModel()) {
         case PfcModel::CVD:     return sweepParamsCvd_;
-        case PfcModel::Elastic: return sweepParamsElastic_;
         default:                return sweepParamsMisfit_;
     }
 }
@@ -2139,6 +2519,9 @@ void MainWindow::setRunningUi(bool running) {
     if (expRunBtn_) expRunBtn_->setEnabled(!running);
     if (expStopBtn_) expStopBtn_->setEnabled(running);
     if (experimentSubTabs_) experimentSubTabs_->setEnabled(!running);
+    if (elasticRunBtn_) elasticRunBtn_->setEnabled(!running);
+    if (elasticStopBtn_) elasticStopBtn_->setEnabled(running);
+    if (elasticControls_) elasticControls_->setEnabled(!running);
 }
 
 void MainWindow::resizeEvent(QResizeEvent* event) {
@@ -2149,21 +2532,34 @@ void MainWindow::resizeEvent(QResizeEvent* event) {
 void MainWindow::launchJob(const RunJob& job) {
     RunJob actual = job;
 
+    auto abortLaunch = [this](const QString& title, const QString& message) {
+        QMessageBox::critical(this, title, message);
+        jobQueue_.clear();
+        currentJobIndex_ = -1;
+        currentJobMode_.clear();
+        currentJobTotalSteps_ = 0;
+        if (expStepProgress_) expStepProgress_->setValue(0);
+        if (expProgress_) expProgress_->setValue(0);
+        if (elasticStepProgress_) elasticStepProgress_->setValue(0);
+        if (elasticProgress_) elasticProgress_->setValue(0);
+        setRunningUi(false);
+    };
+
     QString err;
     if (!ensureDir(actual.outDir, &err)) {
-        QMessageBox::critical(this, "Output error", err);
+        abortLaunch("Output error", err);
         return;
     }
     if (!writeParamsJson(actual, &err)) {
-        QMessageBox::critical(this, "Output error", err);
+        abortLaunch("Output error", err);
         return;
     }
 
     const QString program = cliPath();
     if (!QFileInfo::exists(program)) {
-        QMessageBox::critical(this, "CLI not found",
-                              "Cannot find experiment CLI next to the GUI executable:\n" + program +
-                                  "\n\nMake sure `pfc-exp-cli` is packaged alongside the GUI.");
+        abortLaunch("CLI not found",
+                    "Cannot find experiment CLI next to the GUI executable:\n" + program +
+                        "\n\nMake sure `pfc-exp-cli` is packaged alongside the GUI.");
         return;
     }
 #ifdef Q_OS_WIN
@@ -2205,6 +2601,13 @@ void MainWindow::launchJob(const RunJob& job) {
         expStepProgress_->setRange(0, std::max(1, actual.params.steps));
         expStepProgress_->setValue(0);
     }
+    if (elasticStepProgress_) {
+        elasticStepProgress_->setRange(0, std::max(1, actual.params.steps));
+        elasticStepProgress_->setValue(0);
+    }
+    if (elasticProgress_) {
+        elasticProgress_->setValue(actual.total > 1 ? 0 : 0);
+    }
 
     connect(process_, &QProcess::readyRead, this, &MainWindow::onProcessReadyRead);
     connect(process_, &QProcess::finished, this, &MainWindow::onProcessFinished);
@@ -2238,8 +2641,79 @@ void MainWindow::startExperiment() {
     }
     currentJobIndex_ = 0;
     if (expProgress_) expProgress_->setValue(0);
+    if (elasticProgress_) elasticProgress_->setValue(0);
     setRunningUi(true);
     launchJob(jobQueue_.at(currentJobIndex_));
+}
+
+void MainWindow::startElasticAnalysis() {
+    if (process_) {
+        QMessageBox::warning(this, "Busy", "A run is already in progress.");
+        return;
+    }
+    if (!elasticInputDir_ || !elasticSteps_ || !elasticMod_ || !elasticBenchel_ || !elasticU0_ || !elasticCon0_ ||
+        !elasticSig_ || !elasticDt_ || !elasticDx_ || !elasticSeed_) {
+        QMessageBox::critical(this, "Elastic Analysis", "Elastic Analysis UI is not fully initialized.");
+        return;
+    }
+
+    updateElasticOutputDirState();
+
+    const QString inputDir = elasticInputDir_->text().trimmed();
+    if (inputDir.isEmpty()) {
+        QMessageBox::warning(this, "Elastic Analysis", "Please select an input directory containing phi_*.vti / con_*.vti.");
+        return;
+    }
+    if (!QDir(inputDir).exists()) {
+        QMessageBox::warning(this, "Elastic Analysis", "Input directory not found:\n" + inputDir);
+        return;
+    }
+
+    const QVector<int> detectedSteps = detectElasticCheckpointSteps(inputDir);
+    int positiveCheckpoints = 0;
+    for (const int step : detectedSteps) {
+        if (step > 0) ++positiveCheckpoints;
+    }
+    if (positiveCheckpoints <= 0) {
+        QMessageBox::warning(
+            this,
+            "Elastic Analysis",
+            "No usable checkpoint VTI pairs were found in the selected input directory.\n\n"
+            "Elastic needs phi_*.vti / con_*.vti files. In the current GUI, CVD writes these checkpoints continuously, "
+            "while Misfit usually does not.");
+        return;
+    }
+
+    const QString outDir = effectiveElasticOutputDir();
+    if (outDir.isEmpty()) {
+        QMessageBox::warning(this, "Elastic Analysis", "Output directory is empty.");
+        return;
+    }
+
+    RunJob job;
+    job.mode = "elastic-analysis";
+    job.index = 1;
+    job.total = 1;
+    job.outDir = outDir;
+    job.params.model = PfcModel::Elastic;
+    job.params.u0 = elasticU0_->value();
+    job.params.con0 = elasticCon0_->value();
+    job.params.sig = elasticSig_->value();
+    job.params.dt = elasticDt_->value();
+    job.params.dx = elasticDx_->value();
+    job.params.steps = elasticSteps_->value();
+    job.params.mod = elasticMod_->value();
+    job.params.seed = elasticSeed_->value();
+    job.params.benchel = elasticBenchel_->value();
+    job.params.inputDir = inputDir;
+
+    jobQueue_.clear();
+    jobQueue_.push_back(job);
+    currentJobIndex_ = 0;
+    if (expProgress_) expProgress_->setValue(0);
+    if (elasticProgress_) elasticProgress_->setValue(0);
+    setRunningUi(true);
+    launchJob(jobQueue_.at(0));
 }
 
 void MainWindow::stopRun() {
@@ -2249,6 +2723,8 @@ void MainWindow::stopRun() {
     currentJobTotalSteps_ = 0;
     if (expStepProgress_) expStepProgress_->setValue(0);
     if (expProgress_) expProgress_->setValue(0);
+    if (elasticStepProgress_) elasticStepProgress_->setValue(0);
+    if (elasticProgress_) elasticProgress_->setValue(0);
     setRunningUi(false);
     if (!process_) return;
     appendLog("=== Stop requested ===");
@@ -2263,7 +2739,13 @@ void MainWindow::browseExperimentOutDir() {
 }
 
 void MainWindow::openCurrentOutputDir() {
-    const QString dir = currentOutputDir_.isEmpty() ? (expBaseOutDir_ ? expBaseOutDir_->text() : QString()) : currentOutputDir_;
+    QString dir = currentOutputDir_;
+    if (dir.isEmpty()) {
+        dir = effectiveElasticOutputDir();
+    }
+    if (dir.isEmpty()) {
+        dir = expBaseOutDir_ ? expBaseOutDir_->text() : QString();
+    }
     if (dir.trimmed().isEmpty()) return;
     QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
 }
@@ -2547,6 +3029,12 @@ void MainWindow::onProcessReadyRead() {
                 }
                 expStepProgress_->setValue(std::clamp(step, 0, expStepProgress_->maximum()));
             }
+            if (elasticStepProgress_) {
+                if (total > 0 && elasticStepProgress_->maximum() != total) {
+                    elasticStepProgress_->setRange(0, total);
+                }
+                elasticStepProgress_->setValue(std::clamp(step, 0, elasticStepProgress_->maximum()));
+            }
             continue;
         }
 
@@ -2582,10 +3070,12 @@ void MainWindow::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus
 
     if (ok) {
         if (expStepProgress_) expStepProgress_->setValue(expStepProgress_->maximum());
+        if (elasticStepProgress_) elasticStepProgress_->setValue(elasticStepProgress_->maximum());
     }
 
     if (jobQueue_.isEmpty() || currentJobIndex_ < 0) {
         if (expProgress_) expProgress_->setValue(0);
+        if (elasticProgress_) elasticProgress_->setValue(0);
         currentJobIndex_ = -1;
         currentJobMode_.clear();
         currentJobTotalSteps_ = 0;
@@ -2595,21 +3085,25 @@ void MainWindow::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus
     const int total = jobQueue_.size();
     const int done = currentJobIndex_ + 1;
     if (expProgress_) expProgress_->setValue(static_cast<int>(100.0 * done / total));
+    if (elasticProgress_) elasticProgress_->setValue(static_cast<int>(100.0 * done / total));
 
     if (!ok) {
-        appendLog("=== Experiment aborted due to failure ===");
+        appendLog("=== Run aborted due to failure ===");
         jobQueue_.clear();
         currentJobIndex_ = -1;
+        currentJobMode_.clear();
+        currentJobTotalSteps_ = 0;
         setRunningUi(false);
         return;
     }
 
     ++currentJobIndex_;
     if (currentJobIndex_ >= total) {
-        appendLog("=== Experiment complete ===");
+        appendLog("=== Run complete ===");
         jobQueue_.clear();
         currentJobIndex_ = -1;
         if (expProgress_) expProgress_->setValue(100);
+        if (elasticProgress_) elasticProgress_->setValue(100);
         currentJobMode_.clear();
         currentJobTotalSteps_ = 0;
         setRunningUi(false);

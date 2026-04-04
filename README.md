@@ -4,14 +4,19 @@
 
 ## 组成
 
-- `MID Nano`：图形界面（Experiment：固定参数/扫参，Fixed / Range / List）
+- `MID Nano`：图形界面
+  - `Simulation`：Misfit / CVD 主仿真（Fixed / Range / List 扫参）
+  - `Elastic Analysis`：读取已有 `phi_*.vti / con_*.vti` 做后处理
+  - `Visualizer`：查看 `*.txt` 结果并渲染热图
 - `pfc-exp-cli`：实验程序命令行版本（参数通过命令行传入，输出写入指定目录）
 
 ## 功能
 
-- 实验（Experiment）：每个参数可选择 Fixed / Range / List（固定/范围/列表），按笛卡尔积组合后顺序运行多组实验；当全部为 Fixed 时等价于单次实验。
+- 仿真（Simulation）：Misfit / CVD 每个参数可选择 Fixed / Range / List（固定/范围/列表），按笛卡尔积组合后顺序运行多组实验；当全部为 Fixed 时等价于单次实验。
+- Elastic Analysis：选择已有输出目录中的 `phi_*.vti / con_*.vti`，自动检测 checkpoint，并输出 `Phimax_*.txt / strain_*.txt`。
 - 可视化：查看输出目录中的 `*.txt`；对 `Phimax_*.txt` 等快照可渲染热图并导出 PNG。
 - 每次运行都会在输出目录写入 `params.json`（GUI 生成）与 `run_config.txt`（CLI 写入）。
+- 当前默认流程更偏向 `CVD -> Elastic Analysis`；因为当前 GUI 版 `misfit` 默认不会持续写出供 Elastic 消费的 VTI checkpoint。
 
 ## 构建（CMake）
 
@@ -60,7 +65,8 @@ cmake --build build --config Release
 
 运行 `MID Nano`（确保同目录下存在 `pfc-exp-cli`），在界面中填写参数与输出目录：
 
-- Experiment：固定参数/扫参（逐参数 Fixed / Range / List）
+- Simulation：Misfit / CVD 固定参数 / 扫参（逐参数 Fixed / Range / List）
+- Elastic Analysis：选择包含 `phi_*.vti / con_*.vti` 的输入目录，生成 `Phimax_*.txt / strain_*.txt`
 - Visualizer：结果查看（Table / Plot）
 
 ### CLI

@@ -12,6 +12,7 @@ class QDialog;
 class QGraphicsPixmapItem;
 class QGraphicsScene;
 class QGraphicsView;
+class QGroupBox;
 class QLabel;
 class QLineEdit;
 class QListWidget;
@@ -66,10 +67,14 @@ protected:
 
 private slots:
     void startExperiment();
+    void startElasticAnalysis();
     void stopRun();
     void browseExperimentOutDir();
+    void browseElasticInputDir();
+    void browseElasticOutputDir();
     void openCurrentOutputDir();
     void updateExperimentPreview();
+    void updateElasticInputSummary();
     void showAboutDialog();
     void uploadLicense();
 
@@ -83,10 +88,16 @@ private:
     bool ensureDir(const QString& dirPath, QString* errorOut) const;
     QString makeTimestampedDirName(const QString& prefix) const;
     QString formatRunLabel(int index, int total) const;
+    QString effectiveElasticOutputDir() const;
 
     QVector<RunJob> buildExperimentJobs(const QString& baseDir, const QString& experimentName, QString* errorOut) const;
     QStringList buildArgs(const RunParams& params, const QString& outDir) const;
     bool writeParamsJson(const RunJob& job, QString* errorOut) const;
+    bool populateElasticFieldsFromRunConfig(const QString& dirPath, QString* messageOut) const;
+    QVector<int> detectElasticCheckpointSteps(const QString& dirPath) const;
+    void updateElasticOutputDirState();
+    void useCurrentOutputDirForElastic();
+    void useVisualizerDirForElastic();
 
     void launchJob(const RunJob& job);
     void appendLog(const QString& text);
@@ -108,6 +119,9 @@ private:
     QString processOutputBuffer_;
     QString currentJobMode_;
     int currentJobTotalSteps_ = 0;
+
+    QTabWidget* mainTabs_ = nullptr;
+    int elasticMainTabIndex_ = -1;
 
     QPlainTextEdit* log_ = nullptr;
     QDialog* logDialog_ = nullptr;
@@ -149,9 +163,27 @@ private:
     QTabWidget* experimentSubTabs_ = nullptr;
     QVector<SweepParamWidgets> sweepParamsMisfit_;
     QVector<SweepParamWidgets> sweepParamsCvd_;
-    QVector<SweepParamWidgets> sweepParamsElastic_;
     QPushButton* expRunBtn_ = nullptr;
     QPushButton* expStopBtn_ = nullptr;
+    QWidget* elasticControls_ = nullptr;
+    QLineEdit* elasticInputDir_ = nullptr;
+    QLineEdit* elasticOutputDir_ = nullptr;
+    QToolButton* elasticOutputBrowse_ = nullptr;
+    QCheckBox* elasticOutputSameAsInput_ = nullptr;
+    QLabel* elasticInputSummary_ = nullptr;
+    QDoubleSpinBox* elasticU0_ = nullptr;
+    QDoubleSpinBox* elasticCon0_ = nullptr;
+    QDoubleSpinBox* elasticSig_ = nullptr;
+    QDoubleSpinBox* elasticDt_ = nullptr;
+    QDoubleSpinBox* elasticDx_ = nullptr;
+    QSpinBox* elasticSteps_ = nullptr;
+    QSpinBox* elasticMod_ = nullptr;
+    QSpinBox* elasticSeed_ = nullptr;
+    QDoubleSpinBox* elasticBenchel_ = nullptr;
+    QPushButton* elasticRunBtn_ = nullptr;
+    QPushButton* elasticStopBtn_ = nullptr;
+    QProgressBar* elasticStepProgress_ = nullptr;
+    QProgressBar* elasticProgress_ = nullptr;
 
     PfcModel activeModel() const;
     QVector<SweepParamWidgets>& activeModelParams();

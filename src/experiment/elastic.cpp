@@ -4,6 +4,8 @@
 // Date: 2020.7.14
 
 #include "pfc_common.h"
+#include <set>
+#include <vector>
 
 static constexpr int L = PFC_GRID_L;
 static constexpr int M = PFC_GRID_M;
@@ -24,6 +26,52 @@ static int total_steps = 2002;
 static std::string output_dir;
 static std::string input_dir;
 static unsigned int base_seed = FIXED_SEED;
+
+static std::string MakeInputFilePath(const char* prefix, int step, int rank) {
+    char filename[64];
+    sprintf(filename, "%s%d%s%d%s", prefix, step, "_", rank, ".vti");
+    if (input_dir.empty()) return std::string(filename);
+    return (std::filesystem::path(input_dir) / filename).string();
+}
+
+static std::vector<int> CollectAvailableCheckpointSteps() {
+    std::vector<int> out;
+    const std::filesystem::path dir = input_dir.empty() ? std::filesystem::current_path() : std::filesystem::path(input_dir);
+
+    std::error_code ec;
+    if (!std::filesystem::exists(dir, ec) || ec) return out;
+
+    std::set<int> phi_steps;
+    std::set<int> con_steps;
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+        if (ec) break;
+        if (!entry.is_regular_file()) continue;
+        const std::string name = entry.path().filename().string();
+
+        int step = 0;
+        int rank = 0;
+        if (sscanf(name.c_str(), "phi_%d_%d.vti", &step, &rank) == 2) {
+            phi_steps.insert(step);
+            continue;
+        }
+        if (sscanf(name.c_str(), "con_%d_%d.vti", &step, &rank) == 2) {
+            con_steps.insert(step);
+        }
+    }
+
+    bool has_positive = false;
+    for (const int step : phi_steps) {
+        if (!con_steps.count(step)) continue;
+        if (step > 0) has_positive = true;
+        out.push_back(step);
+    }
+    std::sort(out.begin(), out.end());
+
+    if (has_positive) {
+        out.erase(std::remove(out.begin(), out.end(), 0), out.end());
+    }
+    return out;
+}
 
 static float a_100=1.0, a_110=1.414*a_100, a_111=1.732*a_100; 
 static float ai=10;
@@ -292,6 +340,14 @@ MPI_Comm_size(MPI_COMM_WORLD, & numprocs);
     }
     RecomputeDerivedParams();
 
+    if (!input_dir.empty()) {
+        std::error_code ec;
+        const std::filesystem::path abs_input = std::filesystem::absolute(input_dir, ec);
+        if (!ec) {
+            input_dir = abs_input.string();
+        }
+    }
+
     if (!PFC_SetupOutputDir(output_dir, myid)) {
         MPI_Finalize();
         return 2;
@@ -409,24 +465,52 @@ for (int n=N/2+1; n <N; n ++)	krefn[n]=(n-N)*2.0*pi/(N*dx);
 
 
 
-	for (int t = 0; t < total_steps; t++) {
-		kd = t;
+    const std::vector<int> checkpoint_steps = CollectAvailableCheckpointSteps();
+    if (myid == 0 && !checkpoint_steps.empty()) {
+        cerr << "Elastic detected " << checkpoint_steps.size() << " checkpoint step(s)";
+        if (!checkpoint_steps.empty()) {
+            cerr << " [";
+            const size_t shown = std::min<size_t>(checkpoint_steps.size(), 8);
+            for (size_t i = 0; i < shown; ++i) {
+                if (i) cerr << ", ";
+                cerr << checkpoint_steps[i];
+            }
+            if (checkpoint_steps.size() > shown) cerr << ", ..., " << checkpoint_steps.back();
+            cerr << "]";
+        }
+        cerr << endl;
+    }
 
+    if (!checkpoint_steps.empty()) {
+	    for (size_t idx = 0; idx < checkpoint_steps.size(); ++idx) {
+            kd = checkpoint_steps[idx];
 
+            if (myid == 0) {
+                fprintf(stderr, "PFC_PROGRESS step=%zu total=%zu\n", idx + 1, checkpoint_steps.size());
+                fflush(stderr);
+            }
 
+            READPHIVTIN(phi, local_n0, myid);
+            READPHIVTIC(con, local_n0, myid);
+            phimax_atmposi(phi,local_n0,local_0_start,myid,numprocs);
+	    }
+    } else {
+	    for (int t = 0; t < total_steps; t++) {
+            const int output_step = t + 1;
+            kd = output_step;
 
-			if ((kd % mod) == 0 && kd > 0) {
-				
-				READPHIVTIN(phi, local_n0, myid);
-				READPHIVTIC(con, local_n0, myid);
-	
-			
-				 phimax_atmposi(phi,local_n0,local_0_start,myid,numprocs);
+            if (myid == 0) {
+                fprintf(stderr, "PFC_PROGRESS step=%d total=%d\n", output_step, total_steps);
+                fflush(stderr);
+            }
 
-
-		}
-
-	}
+            if ((output_step % mod) == 0 || output_step == total_steps) {
+                READPHIVTIN(phi, local_n0, myid);
+                READPHIVTIC(con, local_n0, myid);
+                phimax_atmposi(phi,local_n0,local_0_start,myid,numprocs);
+            }
+	    }
+    }
 
 
 //fftw_destroy_plan(p1);
@@ -2468,9 +2552,7 @@ static void ROT_XYZ(float dang_base[9], float dang[9], float *dtheta, char *daxi
 
 
 static void READPHIVTIN(fftw_complex *dphi, int dlocal_n0,int dmyid){
-     
-     char filename[20];
-	 sprintf(filename, "%s%d%s%d%s", "phi_", kd, "_", dmyid, ".vti");
+     const std::string filename = MakeInputFilePath("phi_", kd, dmyid);
 
 	 float *treal,*ddphi;
 	 treal=(float *) fftw_malloc(sizeof(float) * N*M*(dlocal_n0+1)); //[N][M][L];
@@ -2478,10 +2560,10 @@ static void READPHIVTIN(fftw_complex *dphi, int dlocal_n0,int dmyid){
 
 
      FILE * inf_field;
-     inf_field=fopen(filename,"r");
+     inf_field=fopen(filename.c_str(),"r");
 	 if(inf_field==NULL){
-	   printf("can't open this file\n");
-		   exit(0);
+	   cerr << "can't open input file: " << filename << endl;
+		   exit(2);
 	 }
      char bufc[100]; //�洢�ַ�
      int i = 1;
@@ -2550,14 +2632,13 @@ static void READPHIVTIN(fftw_complex *dphi, int dlocal_n0,int dmyid){
      fclose(inf_field); 
 //	 delete [] treal;
 	 free(treal);
+     free(ddphi);
 //free(buf);
 }
 
 
 static void READPHIVTIC(fftw_complex *dcon, int dlocal_n0,int dmyid){
-     
-     char filename[20];
-	 sprintf(filename, "%s%d%s%d%s", "con_", kd, "_", dmyid, ".vti");
+     const std::string filename = MakeInputFilePath("con_", kd, dmyid);
 
 	 float *treal,*ddphi;
 	 treal=(float *) fftw_malloc(sizeof(float) * N*M*(dlocal_n0+1)); //[N][M][L];
@@ -2565,10 +2646,10 @@ static void READPHIVTIC(fftw_complex *dcon, int dlocal_n0,int dmyid){
 
 
      FILE * inf_field;
-     inf_field=fopen(filename,"r");
+     inf_field=fopen(filename.c_str(),"r");
 	 if(inf_field==NULL){
-	   printf("can't open this file\n");
-		   exit(0);
+	   cerr << "can't open input file: " << filename << endl;
+		   exit(2);
 	 }
      char bufc[100]; //�洢�ַ�
      int i = 1;
@@ -2637,6 +2718,7 @@ static void READPHIVTIC(fftw_complex *dcon, int dlocal_n0,int dmyid){
      fclose(inf_field); 
 //	 delete [] treal;
 	 free(treal);
+     free(ddphi);
 //free(buf);
 }
 
@@ -3677,5 +3759,3 @@ free(strainx_near);
 free(strainy_near);
 free(strainz_near);
 }
-
-
