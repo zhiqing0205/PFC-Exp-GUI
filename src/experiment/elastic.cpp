@@ -3346,15 +3346,21 @@ static void cryst_order(double *drbuf_x, double *drbuf_y, double *drbuf_z, int d
 	outfile.setf(ios_base::fixed, ios_base::floatfield);
 	outfile.precision(4);
 
-	outfile << dsize_buf - 2 << endl;
+	outfile << num_atoms_total << endl;
 	outfile << "Kommentar" << endl;
 
-
+	double qMinX=1e30, qMaxX=-1e30, qMinY=1e30, qMaxY=-1e30;
 	for (int i = 0; i<dsize_buf; i++) {
 		if (drbuf_x[i] >= 0) {
 			outfile << "qc" << " " << drbuf_x[i] << " " << drbuf_y[i] << " " << drbuf_z[i] << " " << q_4[i] << " " << q_6[i] << endl;
+			if (drbuf_x[i] < qMinX) qMinX = drbuf_x[i];
+			if (drbuf_x[i] > qMaxX) qMaxX = drbuf_x[i];
+			if (drbuf_y[i] < qMinY) qMinY = drbuf_y[i];
+			if (drbuf_y[i] > qMaxY) qMaxY = drbuf_y[i];
 		}
 	}
+	cerr << "q4q6_" << kd << ".txt: atoms=" << num_atoms_total
+	     << " x=[" << qMinX << "," << qMaxX << "] y=[" << qMinY << "," << qMaxY << "]" << endl;
 
 	outfile.close();
 
