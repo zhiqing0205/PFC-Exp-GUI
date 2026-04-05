@@ -1160,7 +1160,7 @@ static void interENERGYC2(fftw_plan pe, fftw_complex *dphi, fftw_complex *dcon, 
 		}
 	}
 	dEE = dEEsum1 *8;
-	cout <<dEE << endl;
+	// cout <<dEE << endl;
 	for (int l = 0; l <dlocal_n0; l++) {
 		for (int m = 0; m <M; m++) {
 			for (int n = 0; n <N; n++) {
@@ -1469,7 +1469,7 @@ static void GR(float *drbuf_x, float *drbuf_y, float *drbuf_z, int dsize_buf){
 //	nstep=1;
 	float rho=float(num_t)/float(L*M*N*dx*dx*dx);
 	float preco=4.*pi*rho/3.;
-    cout<<rho<<" "<<preco<<endl;
+    // cout<<rho<<" "<<preco<<endl;
 
     char filename1[20];
     sprintf(filename1, "%s%d%s", "Grq6_", kd,".txt");
@@ -1708,7 +1708,7 @@ Ql_L=0;
 static void PVTKWRITE(int dlocal_n0,int dnumprocs,int dstartz,int dendz, char *dfilename){
    char filename[20];
    char filenames[20];   
-   cout << theta1<< endl;
+   // cout << theta1<< endl;
    sprintf(filename, "%s%d%s%d%s", dfilename, theta1,"_", kd,".pvti");
    ofstream outfile(filename,ios_base::out);
    outfile.setf(ios_base::fixed,ios_base::floatfield);
@@ -2594,7 +2594,7 @@ static void READPHIVTIN(fftw_complex *dphi, int dlocal_n0,int dmyid){
                     for(int l=0; l<dlocal_n0; l++){
 						 // if(fread(&treal[l+dlocal_n0*(m+M*n)],sizeof(float),1,inf_field)!=1){  // //[n][m][l]
 							if(fread(&treal[n+N*(m+M*l)],sizeof(float),1,inf_field)!=1){  // //[n][m][l]
-							cout<<"file read error"<<endl;
+							/* file read error (suppressed) */
 							}
 							else{
 								sumi=sumi+1;
@@ -2612,7 +2612,7 @@ static void READPHIVTIN(fftw_complex *dphi, int dlocal_n0,int dmyid){
                     for(int l=0; l<dlocal_n0+1; l++){
 						 // if(fread(&treal[l+dlocal_n0*(m+M*n)],sizeof(float),1,inf_field)!=1){  // //[n][m][l]
 							if(fread(&treal[n+N*(m+M*l)],sizeof(float),1,inf_field)!=1){  // //[n][m][l]
-							cout<<"file read error"<<endl;
+							/* file read error (suppressed) */
 							}
 							else{
 								sumi=sumi+1;
@@ -2680,7 +2680,7 @@ static void READPHIVTIC(fftw_complex *dcon, int dlocal_n0,int dmyid){
                     for(int l=0; l<dlocal_n0; l++){
 						 // if(fread(&treal[l+dlocal_n0*(m+M*n)],sizeof(float),1,inf_field)!=1){  // //[n][m][l]
 							if(fread(&treal[n+N*(m+M*l)],sizeof(float),1,inf_field)!=1){  // //[n][m][l]
-							cout<<"file read error"<<endl;
+							/* file read error (suppressed) */
 							}
 							else{
 								sumi=sumi+1;
@@ -2698,7 +2698,7 @@ static void READPHIVTIC(fftw_complex *dcon, int dlocal_n0,int dmyid){
                     for(int l=0; l<dlocal_n0+1; l++){
 						 // if(fread(&treal[l+dlocal_n0*(m+M*n)],sizeof(float),1,inf_field)!=1){  // //[n][m][l]
 							if(fread(&treal[n+N*(m+M*l)],sizeof(float),1,inf_field)!=1){  // //[n][m][l]
-							cout<<"file read error"<<endl;
+							/* file read error (suppressed) */
 							}
 							else{
 								sumi=sumi+1;
@@ -3489,7 +3489,7 @@ static void elastic(double *drbuf_x, double *drbuf_y, double *drbuf_z, int dsize
 					 num_near[i]=num_near[i]+1;
 					 midnum1=num_near[i];
 					if(midnum1>CNmax) {
-						cout<<"midnumlerror"<<endl;
+						// cout<<"midnumlerror"<<endl;
 						break;}
 					 numi_near[i*CNmax+midnum1]=j;     //�������ԭ�ӵĽ���ԭ������ 
 					 dis_near[i*CNmax+midnum1]=disof2a;

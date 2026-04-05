@@ -1113,10 +1113,11 @@ static void atompositionCFGC2(fftw_complex *dphi,int dlocal_n0,int dlocal_0_star
 	   lf2=0,lb2=0,mf2=0,mb2=0,nf2=0,nb2=0;
   // float pc[L*M][3];
 
-   float *pc_x,*pc_y,*pc_z;
+   float *pc_x,*pc_y,*pc_z,*pc_phi;
    pc_x=(float*) malloc(L*M*100*sizeof(float));
    pc_y=(float*) malloc(L*M*100*sizeof(float));
    pc_z=(float*) malloc(L*M*100*sizeof(float));
+   pc_phi=(float*) malloc(L*M*100*sizeof(float));
 
    ophimax<<" pc_xyz is initializing "<<endl;   
 
@@ -1151,6 +1152,7 @@ static void atompositionCFGC2(fftw_complex *dphi,int dlocal_n0,int dlocal_0_star
                                       pc_x[num_atoms]=(ytemp*dx)/(frame_y);
                                       pc_y[num_atoms]=(ztemp*dx)/(frame_z);
                                       pc_z[num_atoms]=(xtemp*dx)/(frame_x);
+                                      pc_phi[num_atoms]=buf[n+N*(m+M*l)];
                                       num_atoms++;
 							      
 								  }
@@ -1185,14 +1187,16 @@ static void atompositionCFGC2(fftw_complex *dphi,int dlocal_n0,int dlocal_0_star
    int size_buf=displs[dnumprocs-1]+rcounts[dnumprocs-1];
    
   // float rbuf[size_buf][3];
-     float *rbuf_x,*rbuf_y,*rbuf_z;
+     float *rbuf_x,*rbuf_y,*rbuf_z,*rbuf_phi;
      rbuf_x=(float*) malloc(size_buf*sizeof(float));
      rbuf_y=(float*) malloc(size_buf*sizeof(float));
      rbuf_z=(float*) malloc(size_buf*sizeof(float));
+     rbuf_phi=(float*) malloc(size_buf*sizeof(float));
 
-   MPI_Gatherv(pc_x,size_pc,MPI_FLOAT,rbuf_x,rcounts,displs,MPI_FLOAT,0,MPI_COMM_WORLD);   
-   MPI_Gatherv(pc_y,size_pc,MPI_FLOAT,rbuf_y,rcounts,displs,MPI_FLOAT,0,MPI_COMM_WORLD); 
-   MPI_Gatherv(pc_z,size_pc,MPI_FLOAT,rbuf_z,rcounts,displs,MPI_FLOAT,0,MPI_COMM_WORLD); 
+   MPI_Gatherv(pc_x,size_pc,MPI_FLOAT,rbuf_x,rcounts,displs,MPI_FLOAT,0,MPI_COMM_WORLD);
+   MPI_Gatherv(pc_y,size_pc,MPI_FLOAT,rbuf_y,rcounts,displs,MPI_FLOAT,0,MPI_COMM_WORLD);
+   MPI_Gatherv(pc_z,size_pc,MPI_FLOAT,rbuf_z,rcounts,displs,MPI_FLOAT,0,MPI_COMM_WORLD);
+   MPI_Gatherv(pc_phi,size_pc,MPI_FLOAT,rbuf_phi,rcounts,displs,MPI_FLOAT,0,MPI_COMM_WORLD); 
 
       ophimax<<" pc_xyz has been gathered "<<endl; 
 
@@ -1200,7 +1204,7 @@ static void atompositionCFGC2(fftw_complex *dphi,int dlocal_n0,int dlocal_0_star
    if (dmyid==0) {
     int num_atoms_total=0;
     for (int i=0; i<size_buf; i++) {if (rbuf_x[i]>=0) {num_atoms_total++; }}
-    cout<<"num_atoms_total="<<num_atoms_total<<endl;
+    // cout<<"num_atoms_total="<<num_atoms_total<<endl;
     char filename[20];
     sprintf(filename, "%s%d%s", "phiball_", kd,".cfg");
     ofstream outfile(filename,ios_base::out);
@@ -1237,7 +1241,7 @@ static void atompositionCFGC2(fftw_complex *dphi,int dlocal_n0,int dlocal_0_star
         phimaxfile << "Kommentar" << endl;
         for (int i = 0; i < size_buf; i++) {
             if (rbuf_x[i] >= 0)
-                phimaxfile << rbuf_x[i]*frame_y << " " << rbuf_y[i]*frame_z << " " << rbuf_z[i]*frame_x << " " << 1.0 << endl;
+                phimaxfile << rbuf_x[i]*frame_y << " " << rbuf_y[i]*frame_z << " " << rbuf_z[i]*frame_x << " " << rbuf_phi[i] << endl;
         }
         phimaxfile.close();
     }
@@ -1251,9 +1255,11 @@ free(temp);
 free(pc_x);
 free(pc_y);
 free(pc_z);
+free(pc_phi);
 free(rbuf_x);
 free(rbuf_y);
 free(rbuf_z);
+free(rbuf_phi);
 free(buf);
 temp=0;
 pc_x=0;
@@ -1277,12 +1283,12 @@ static void GR(float *drbuf_x, float *drbuf_y, float *drbuf_z, int dsize_buf){
 
 	int num_t=0;
 	for (int tt=0; tt<dsize_buf; tt++) {if (drbuf_x[tt]>=0) {num_t++; }}
-    cout<<"dsize_buf="<<dsize_buf<<" , num_t="<<num_t<<endl;
+    // cout<<"dsize_buf="<<dsize_buf<<" , num_t="<<num_t<<endl;
     
     for (int ii=0; ii<maxbin; ii++){
 	         gr[ii]=0; hist[ii]=0;	}
 
-      cout<<"initial hist, gr"<<endl;
+      // cout<<"initial hist, gr"<<endl;
 
 	for(int i=0; i<dsize_buf-1; i++){
 	  for(int j=i+1; j<dsize_buf; j++){
@@ -1317,7 +1323,7 @@ static void GR(float *drbuf_x, float *drbuf_y, float *drbuf_z, int dsize_buf){
 //	nstep=1;
 	float rho=float(num_t)/float(L*M*N*dx*dx*dx);
 	float preco=4.*pi*rho/3.;
-    cout<<rho<<" "<<preco<<endl;
+    // cout<<rho<<" "<<preco<<endl;
 
     char filename1[20];
     sprintf(filename1, "%s%d%s", "Grq6_", kd,".txt");
@@ -1354,14 +1360,14 @@ static void Q6_GLO(float *drbuf_x, float *drbuf_y, float *drbuf_z, int dsize_buf
 
 	int num_t=0;
 	for (int tt=0; tt<dsize_buf; tt++) {if (drbuf_x[tt]>=0) {num_t++; }}
-    cout<<"dsize_buf="<<dsize_buf<<" , num_t="<<num_t<<endl;
+    // cout<<"dsize_buf="<<dsize_buf<<" , num_t="<<num_t<<endl;
     
 	for (int ii=0; ii<dnum; ii++){
 	         Nb[ii]=0;   }
 	for (int ii=0; ii<dnum*CNmax; ii++){
 		 theta[ii]=0.; fai[ii]=0.;}
 		 
-      cout<<"initial Nb"<<endl;
+      // cout<<"initial Nb"<<endl;
 
 	for(int i=0; i<dsize_buf; i++){
 	  for(int j=0; j<dsize_buf; j++){
@@ -1414,7 +1420,7 @@ static void Q6_GLO(float *drbuf_x, float *drbuf_y, float *drbuf_z, int dsize_buf
 	outNb.close();
 */   
 
-	cout<<kd<<" initial Cox, rij, ready for theta & fai "<<endl;
+	// cout<<kd<<" initial Cox, rij, ready for theta & fai "<<endl;
     for(int i=0; i<dnum; i++){
 	 if(Nb[i]>0  && Nb[i]<=CNmax){
 		for (int j=0; j<Nb[i]; j++){		
@@ -1506,7 +1512,7 @@ static void Q6_GLO(float *drbuf_x, float *drbuf_y, float *drbuf_z, int dsize_buf
 		if(bin<maxbin) histq[bin]=histq[bin]+1;
   }
 	outQl.close();
-    cout<<kd<<", Ql is done"<<endl;
+    // cout<<kd<<", Ql is done"<<endl;
   	char histqname[20];
     sprintf(histqname, "%s%d%s", "HistQ_", kd,".txt");
     ofstream outHistQ(histqname,ios_base::out);
