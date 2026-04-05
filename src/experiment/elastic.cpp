@@ -1767,7 +1767,7 @@ static void sVTKwriteBianry(fftw_complex *dphi,int dlocal_n0,int dlocal_0_start,
 
 
   FILE * outf_tfield;
-  outf_tfield=fopen(filename,"w");
+  outf_tfield=fopen(filename,"wb");
   fprintf(outf_tfield,"<?xml version=\"1.0\"?>\n");
   fprintf(outf_tfield,"<VTKFile type=\"ImageData\" version=\"0.1\"  byte_order=\"LittleEndian\">\n");
   fprintf(outf_tfield,"<ImageData WholeExtent=\"%d %d %d %d %d %d\"   Origin=\"%d %d %d\" Spacing=\"%d %d %d\">\n",startn,endn,0,M-1,0,N-1
@@ -1878,7 +1878,7 @@ static void sVTKwriteBianryc(fftw_complex *dcon,int dlocal_n0,int dlocal_0_start
 
 
   FILE * outf_tfield;
-  outf_tfield=fopen(filename,"w");
+  outf_tfield=fopen(filename,"wb");
   fprintf(outf_tfield,"<?xml version=\"1.0\"?>\n");
   fprintf(outf_tfield,"<VTKFile type=\"ImageData\" version=\"0.1\"  byte_order=\"LittleEndian\">\n");
   fprintf(outf_tfield,"<ImageData WholeExtent=\"%d %d %d %d %d %d\"   Origin=\"%d %d %d\" Spacing=\"%d %d %d\">\n",startn,endn,0,M-1,0,N-1
@@ -2568,7 +2568,7 @@ static void READPHIVTIN(fftw_complex *dphi, int dlocal_n0,int dmyid){
 
 
      FILE * inf_field;
-     inf_field=fopen(filename.c_str(),"r");
+     inf_field=fopen(filename.c_str(),"rb");
 	 if(inf_field==NULL){
 	   cerr << "can't open input file: " << filename << endl;
 		   exit(2);
@@ -2654,7 +2654,7 @@ static void READPHIVTIC(fftw_complex *dcon, int dlocal_n0,int dmyid){
 
 
      FILE * inf_field;
-     inf_field=fopen(filename.c_str(),"r");
+     inf_field=fopen(filename.c_str(),"rb");
 	 if(inf_field==NULL){
 	   cerr << "can't open input file: " << filename << endl;
 		   exit(2);
