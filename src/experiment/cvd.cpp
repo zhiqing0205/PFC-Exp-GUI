@@ -423,12 +423,19 @@ for(int t=0;t<total_steps; t++){  //*
 //	         } //***tttt
 
 	if ((t % mod) == 0) {
-		// if(t==500) {sig=0.02;mod=5000;INITIAL_con(con,local_n0);}
-		//phimax_atmposi(phi, local_n0, local_0_start, myid, numprocs);
+		kd = t;
 		sVTKwriteBianry(phi, local_n0, local_0_start, myid, numprocs);
 		PVTKWRITE(local_n0, numprocs, 0, N, Pname);
 		sVTKwriteBianryc(con, local_n0, local_0_start, myid, numprocs);
 		PVTKWRITEC(local_n0, numprocs, 0, N, Pnamec);
+
+		if (myid == 0 && checkpoint_log.is_open()) {
+		    const auto now = std::chrono::system_clock::now();
+		    const auto timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+		        now.time_since_epoch()).count();
+		    checkpoint_log << "step " << t << " timestamp_ms " << timestamp_ms << endl;
+		    checkpoint_log.flush();
+		}
 	}
 
       ENERGYC2(p4, phi, con,conHat,in3,in,grac, out,enei,EEsum,DSsum,local_n0,local_0_start,myid, numprocs);

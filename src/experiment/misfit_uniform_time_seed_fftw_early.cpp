@@ -516,6 +516,8 @@ PVTKWRITEC(local_n0,numprocs,0,N,Pnamec);
 				sVTKwriteBianryc(con, local_n0, local_0_start, myid, numprocs);
 				PVTKWRITEC(local_n0, numprocs, 0, N, Pnamec);
 
+				ENERGYC2(p4, phi, con, conHat, in3, in, grac, out, enei, EEsum, DSsum, local_n0, local_0_start, myid, numprocs);
+
 				// Write checkpoint timestamp (rank 0 only)
 				if (myid == 0 && checkpoint_log.is_open()) {
 				    const auto now = std::chrono::system_clock::now();

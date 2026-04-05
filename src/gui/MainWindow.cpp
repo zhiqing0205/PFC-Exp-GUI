@@ -1713,17 +1713,20 @@ void MainWindow::loadResultsFile(const QString& filePath) {
             if (c == 6) return "q6";
         }
         if (isStrainSnapshot) {
-            if (c == 0) return "label";
-            if (c == 1) return "x";
-            if (c == 2) return "y";
-            if (c == 3) return "z";
-            if (c == 4) return "strain";
+            // Format: "st x y z strain Nb" — parser drops "st", so cols are [x,y,z,strain,Nb]
+            if (c == 0) return "x";
+            if (c == 1) return "y";
+            if (c == 2) return "z";
+            if (c == 3) return "strain";
+            if (c == 4) return "Nb";
         }
         if (isCrystSnapshot) {
-            if (c == 0) return "atom_id";
-            if (c == 1) return "Nb";
-            if (c == 2) return "Ql_local";
-            if (c == 3) return "Ql_global";
+            // Format: "qc x y z q4 q6" — parser drops "qc", so cols are [x,y,z,q4,q6]
+            if (c == 0) return "x";
+            if (c == 1) return "y";
+            if (c == 2) return "z";
+            if (c == 3) return "q4";
+            if (c == 4) return "q6";
         }
         if (base.contains("checkpoint")) {
             if (c == 0) return "step";
@@ -1746,11 +1749,11 @@ void MainWindow::loadResultsFile(const QString& filePath) {
                 if (maxCols >= 6) resultsImageValue_->addItem("q4", 5);
                 if (maxCols >= 7) resultsImageValue_->addItem("q6", 6);
             } else if (isStrainSnapshot) {
-                if (maxCols >= 5) resultsImageValue_->addItem("strain", 4);
+                if (maxCols >= 4) resultsImageValue_->addItem("strain", 3);
+                if (maxCols >= 5) resultsImageValue_->addItem("Nb", 4);
             } else if (isCrystSnapshot) {
-                if (maxCols >= 3) resultsImageValue_->addItem("Ql_local", 2);
-                if (maxCols >= 4) resultsImageValue_->addItem("Ql_global", 3);
-                if (maxCols >= 2) resultsImageValue_->addItem("Nb", 1);
+                if (maxCols >= 4) resultsImageValue_->addItem("q4", 3);
+                if (maxCols >= 5) resultsImageValue_->addItem("q6", 4);
             }
             resultsImageValue_->setEnabled(resultsImageValue_->count() > 0);
         }
@@ -3096,22 +3099,26 @@ void MainWindow::showWelcomeDialog() {
                 "<table cellpadding='5' cellspacing='0' width='100%'>"
 
                 "<tr><td style='%2'>"
-                "<b>Simulation</b> &mdash; Run Misfit or CVD forward models. "
-                "Outputs energy, Phimax, and phi/con VTI checkpoint files.</td></tr>"
+                "<b>Simulation</b> &mdash; Run Misfit or CVD forward models.<br/>"
+                "<span style='color:#6B7280; font-size:10pt;'>"
+                "Misfit &rarr; Phimax_*.txt, energy.txt, phi/con VTI checkpoints<br/>"
+                "CVD &rarr; energy.txt, phi/con VTI checkpoints</span></td></tr>"
 
                 "<tr><td style='text-align:center; font-size:14pt; color:#2563EB; padding:1px;'>"
-                "&darr; <span style='font-size:10pt; color:#9CA3AF;'>VTI checkpoints (optional path)</span></td></tr>"
+                "&darr; <span style='font-size:10pt; color:#9CA3AF;'>VTI checkpoints (optional)</span></td></tr>"
 
                 "<tr><td style='%2'>"
-                "<b>Elastic Analysis</b> &mdash; Post-process VTI checkpoints to extract "
-                "strain tensors and crystallographic order (Q4/Q6). <i>Optional step.</i></td></tr>"
+                "<b>Elastic Analysis</b> &mdash; Post-process VTI checkpoints to extract data "
+                "that the forward simulation does not compute.<br/>"
+                "<span style='color:#6B7280; font-size:10pt;'>"
+                "&rarr; Phimax_*.txt, strain_*.txt, q4q6_*.txt</span></td></tr>"
 
                 "<tr><td style='text-align:center; font-size:14pt; color:#2563EB; padding:1px;'>"
                 "&darr; <span style='font-size:10pt; color:#9CA3AF;'>TXT result files</span></td></tr>"
 
                 "<tr><td style='%2'>"
-                "<b>Visualizer</b> &mdash; Display any result TXT files as heatmaps or data tables. "
-                "Works with both Simulation and Elastic Analysis outputs.</td></tr>"
+                "<b>Visualizer</b> &mdash; Display any *.txt result files as heatmaps or data tables. "
+                "Works with both Simulation and Elastic Analysis outputs directly.</td></tr>"
 
                 "</table></div>").arg(stl, sec)));
 
@@ -3136,8 +3143,8 @@ void MainWindow::showWelcomeDialog() {
                 "<div style='%2'>"
                 "<b>Output &amp; Execution</b><br/>"
                 "Choose a base output directory and optional experiment folder name. "
-                "Click <b>Run</b> to start &mdash; each combination runs sequentially with real-time "
-                "step and overall progress bars. Click <b>Stop</b> to abort at any time.</div>"
+                "Click <b>Run</b> to start. Both models output VTI checkpoints (for Elastic Analysis), "
+                "energy.txt, and run_config.txt. Misfit also outputs Phimax_*.txt directly.</div>"
 
                 "</div>").arg(stl, sec)));
 

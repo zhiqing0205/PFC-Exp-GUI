@@ -2978,6 +2978,7 @@ float psum;
   //if (dmyid==0&&(kd%mod2)==0) {
 
  elastic3D(posi_x, posi_y, posi_z, size_atoms);
+ cryst_order(posi_x, posi_y, posi_z, size_atoms);
 
 //GR(posi_x, posi_y, posi_z, size_atoms);
 
