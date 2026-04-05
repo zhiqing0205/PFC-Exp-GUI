@@ -3320,17 +3320,13 @@ void MainWindow::onProcessReadyRead() {
             const int step = m.captured(1).toInt();
             const int total = m.captured(2).toInt();
 
-            if (expStepProgress_) {
-                if (total > 0 && expStepProgress_->maximum() != total) {
-                    expStepProgress_->setRange(0, total);
+            const bool isElastic = (currentJobMode_ == "elastic-analysis");
+            auto* stepBar = isElastic ? elasticStepProgress_ : expStepProgress_;
+            if (stepBar) {
+                if (total > 0 && stepBar->maximum() != total) {
+                    stepBar->setRange(0, total);
                 }
-                expStepProgress_->setValue(std::clamp(step, 0, expStepProgress_->maximum()));
-            }
-            if (elasticStepProgress_) {
-                if (total > 0 && elasticStepProgress_->maximum() != total) {
-                    elasticStepProgress_->setRange(0, total);
-                }
-                elasticStepProgress_->setValue(std::clamp(step, 0, elasticStepProgress_->maximum()));
+                stepBar->setValue(std::clamp(step, 0, stepBar->maximum()));
             }
             continue;
         }
@@ -3365,14 +3361,16 @@ void MainWindow::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus
     process_->deleteLater();
     process_ = nullptr;
 
-    if (ok) {
-        if (expStepProgress_) expStepProgress_->setValue(expStepProgress_->maximum());
-        if (elasticStepProgress_) elasticStepProgress_->setValue(elasticStepProgress_->maximum());
+    const bool isElastic = (currentJobMode_ == "elastic-analysis");
+    auto* stepBar = isElastic ? elasticStepProgress_ : expStepProgress_;
+    auto* overallBar = isElastic ? elasticProgress_ : expProgress_;
+
+    if (ok && stepBar) {
+        stepBar->setValue(stepBar->maximum());
     }
 
     if (jobQueue_.isEmpty() || currentJobIndex_ < 0) {
-        if (expProgress_) expProgress_->setValue(0);
-        if (elasticProgress_) elasticProgress_->setValue(0);
+        if (overallBar) overallBar->setValue(0);
         currentJobIndex_ = -1;
         currentJobMode_.clear();
         currentJobTotalSteps_ = 0;
@@ -3381,8 +3379,7 @@ void MainWindow::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus
 
     const int total = jobQueue_.size();
     const int done = currentJobIndex_ + 1;
-    if (expProgress_) expProgress_->setValue(static_cast<int>(100.0 * done / total));
-    if (elasticProgress_) elasticProgress_->setValue(static_cast<int>(100.0 * done / total));
+    if (overallBar) overallBar->setValue(static_cast<int>(100.0 * done / total));
 
     if (!ok) {
         appendLog("=== Run aborted due to failure ===");
@@ -3399,8 +3396,7 @@ void MainWindow::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus
         appendLog("=== Run complete ===");
         jobQueue_.clear();
         currentJobIndex_ = -1;
-        if (expProgress_) expProgress_->setValue(100);
-        if (elasticProgress_) elasticProgress_->setValue(100);
+        if (overallBar) overallBar->setValue(100);
         currentJobMode_.clear();
         currentJobTotalSteps_ = 0;
         setRunningUi(false);

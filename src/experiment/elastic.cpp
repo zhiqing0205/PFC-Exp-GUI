@@ -1333,7 +1333,7 @@ static void atompositionCFGC2(fftw_complex *dphi,int dlocal_n0,int dlocal_0_star
    ophimax<<" pc_xyz is done "<<endl; 
 
   if (num_atoms==0) {pc_x[0]=-1; pc_y[0]=-1; pc_z[0]=-1;num_atoms=1;}// add false data if num_atoms is zero
-    cout<<num_atoms<<" "<<kd<<" "<<dmyid<<endl;
+    // cout<<num_atoms<<" "<<kd<<" "<<dmyid<<endl;
    int * rcounts, *displs;
 
 
@@ -1346,7 +1346,7 @@ static void atompositionCFGC2(fftw_complex *dphi,int dlocal_n0,int dlocal_0_star
    MPI_Gather(&size_pc,1,MPI_INT,rcounts,1,MPI_INT,0,MPI_COMM_WORLD);
 
    MPI_Bcast(rcounts,dnumprocs,MPI_INT,0,MPI_COMM_WORLD);
-    cout<<"second"<<"myid="<<dmyid<<endl;
+    // cout<<"second"<<"myid="<<dmyid<<endl;
     MPI_Barrier(MPI_COMM_WORLD); 
    displs[0]=0;
    for(int i=1; i<dnumprocs; ++i){displs[i]=displs[i-1]+rcounts[i-1];}
@@ -1364,11 +1364,11 @@ static void atompositionCFGC2(fftw_complex *dphi,int dlocal_n0,int dlocal_0_star
 
       ophimax<<" pc_xyz has been gathered "<<endl; 
 
-    cout<<"third"<<"myid="<<dmyid<<endl;
+    // cout<<"third"<<"myid="<<dmyid<<endl;
    if (dmyid==0) {
     int num_atoms_total=0;
     for (int i=0; i<size_buf; i++) {if (rbuf_x[i]>=0) {num_atoms_total++; }}
-    cout<<"num_atoms_total="<<num_atoms_total<<endl;
+    // cout<<"num_atoms_total="<<num_atoms_total<<endl;
     char filename[20];
     sprintf(filename, "%s%d%s", "phiball_", kd,".cfg");
     ofstream outfile(filename,ios_base::out);
@@ -1429,12 +1429,12 @@ static void GR(float *drbuf_x, float *drbuf_y, float *drbuf_z, int dsize_buf){
 
 	int num_t=0;
 	for (int tt=0; tt<dsize_buf; tt++) {if (drbuf_x[tt]>=0) {num_t++; }}
-    cout<<"dsize_buf="<<dsize_buf<<" , num_t="<<num_t<<endl;
+    // cout<<"dsize_buf="<<dsize_buf<<" , num_t="<<num_t<<endl;
     
     for (int ii=0; ii<maxbin; ii++){
 	         gr[ii]=0; hist[ii]=0;	}
 
-      cout<<"initial hist, gr"<<endl;
+      // cout<<"initial hist, gr"<<endl;
 
 	for(int i=0; i<dsize_buf-1; i++){
 	  for(int j=i+1; j<dsize_buf; j++){
@@ -1506,14 +1506,14 @@ static void Q6_GLO(float *drbuf_x, float *drbuf_y, float *drbuf_z, int dsize_buf
 
 	int num_t=0;
 	for (int tt=0; tt<dsize_buf; tt++) {if (drbuf_x[tt]>=0) {num_t++; }}
-    cout<<"dsize_buf="<<dsize_buf<<" , num_t="<<num_t<<endl;
+    // cout<<"dsize_buf="<<dsize_buf<<" , num_t="<<num_t<<endl;
     
 	for (int ii=0; ii<dnum; ii++){
 	         Nb[ii]=0;   }
 	for (int ii=0; ii<dnum*CNmax; ii++){
 		 theta[ii]=0.; fai[ii]=0.;}
 		 
-      cout<<"initial Nb"<<endl;
+      // cout<<"initial Nb"<<endl;
 
 	for(int i=0; i<dsize_buf; i++){
 	  for(int j=0; j<dsize_buf; j++){
@@ -1566,7 +1566,7 @@ static void Q6_GLO(float *drbuf_x, float *drbuf_y, float *drbuf_z, int dsize_buf
 	outNb.close();
 */   
 
-	cout<<kd<<" initial Cox, rij, ready for theta & fai "<<endl;
+	// cout<<kd<<" initial Cox, rij, ready for theta & fai "<<endl;
     for(int i=0; i<dnum; i++){
 	 if(Nb[i]>0  && Nb[i]<=CNmax){
 		for (int j=0; j<Nb[i]; j++){		
@@ -1658,7 +1658,7 @@ static void Q6_GLO(float *drbuf_x, float *drbuf_y, float *drbuf_z, int dsize_buf
 		if(bin<maxbin) histq[bin]=histq[bin]+1;
   }
 	outQl.close();
-    cout<<kd<<", Ql is done"<<endl;
+    // cout<<kd<<", Ql is done"<<endl;
   	char histqname[20];
     sprintf(histqname, "%s%d%s", "HistQ_", kd,".txt");
     ofstream outHistQ(histqname,ios_base::out);
@@ -2225,7 +2225,7 @@ static void SMOOTHP(float *dphi,float *dphiave,int dlocal_n0,int dlocal_0_start,
    for(int l=lspace; l <dlocal_n0+lspace; l ++) for (int m=0; m <M; m ++) for(int n=0; n <N; n ++){
        buf[n+N*(m+M*l)]=dphiave[n+N*(m+M*(l-lspace))];   }
 
-  cout<<"third "<<endl;
+  // cout<<"third "<<endl;
 
 // "smoothening"
    for(int ll=1;ll<iteration+1;ll++){
@@ -2577,16 +2577,16 @@ static void READPHIVTIN(fftw_complex *dphi, int dlocal_n0,int dmyid){
      int i = 1;
      while (i<13) {
        fgets(bufc, 100, inf_field) ;
-       printf("%d %s", i++, bufc);
+       i++ /* suppressed VTI header print */;
      }  
      char ch;
      ch=fgetc(inf_field);
-     cout<<"ch="<<ch<<endl;
+     // cout<<"ch="<<ch<<endl;
 
      int bytes;
      fread(&bytes,sizeof(int),1,inf_field);
 //     cout<<"dmyid="<<dmyid<<" "<<bytes<<endl;
-	 cout<<bytes<<endl;  
+	 // cout<<bytes<<endl;  
 	 int sumi=0;
      if(dmyid==0){           
 	                for(int n=0; n<N; n++){
@@ -2636,7 +2636,7 @@ static void READPHIVTIN(fftw_complex *dphi, int dlocal_n0,int dmyid){
 	 
 	 
 	 }
-     cout<<"sumi="<<sumi<<endl;
+	 // cout<<"sumi="<<sumi<<endl;
      fclose(inf_field); 
 //	 delete [] treal;
 	 free(treal);
@@ -2663,16 +2663,16 @@ static void READPHIVTIC(fftw_complex *dcon, int dlocal_n0,int dmyid){
      int i = 1;
      while (i<13) {
        fgets(bufc, 100, inf_field) ;
-       printf("%d %s", i++, bufc);
+       i++ /* suppressed VTI header print */;
      }  
      char ch;
      ch=fgetc(inf_field);
-     cout<<"ch="<<ch<<endl;
+     // cout<<"ch="<<ch<<endl;
 
      int bytes;
      fread(&bytes,sizeof(int),1,inf_field);
 //     cout<<"dmyid="<<dmyid<<" "<<bytes<<endl;
-	 cout<<bytes<<endl;  
+	 // cout<<bytes<<endl;  
 	 int sumi=0;
      if(dmyid==0){           
 	                for(int n=0; n<N; n++){
@@ -2722,7 +2722,7 @@ static void READPHIVTIC(fftw_complex *dcon, int dlocal_n0,int dmyid){
 	 
 	 
 	 }
-     cout<<"sumi="<<sumi<<endl;
+	 // cout<<"sumi="<<sumi<<endl;
      fclose(inf_field); 
 //	 delete [] treal;
 	 free(treal);
@@ -2815,7 +2815,7 @@ static void phimax_atmposi(fftw_complex *dphi,int dlocal_n0,int dlocal_0_start, 
    MPI_Allreduce(&phimax,&pii,1,MPI_FLOAT,MPI_MAX,MPI_COMM_WORLD);
    phic=(pii-pii*phicut); 
 //  cout<<"phic="<<phic<<" "<<"phimax="<<phimax<<" "<<"myid="<<dmyid<<endl;
-    cout<<"o"<<"myid="<<dmyid<<endl;
+    // cout<<"o"<<"myid="<<dmyid<<endl;
  float *buf;
    buf = (float *) fftw_malloc(sizeof(float) *M*N*(dlocal_n0+2));
    for(int l=0; l <dlocal_n0+2; l ++) for (int m=0; m <M; m ++) for (int n=0; n <N; n ++){
@@ -2842,7 +2842,7 @@ float psum;
    pc_y=(double*) malloc(M*dlocal_n0*N*sizeof(double));
    pc_z=(double*) malloc(M*dlocal_n0*N*sizeof(double));
    phi_max=(double*) malloc(M*dlocal_n0*N*sizeof(double));
-    cout<<"first"<<"myid="<<dmyid<<endl;
+    // cout<<"first"<<"myid="<<dmyid<<endl;
 
 
 
@@ -2921,7 +2921,7 @@ float psum;
 }     //for
 
   // if (num_atoms==0) {pc_x[0]=-1; pc_y[0]=-1;pc_z[0]=-1; num_atoms=1;}// add false data if num_atoms is zero
-    cout<<num_atoms<<" "<<dmyid<<endl;
+    // cout<<num_atoms<<" "<<dmyid<<endl;
    int * rcounts, *displs;
    rcounts = (int *) malloc(dnumprocs*sizeof(int));
    displs = (int *) malloc(dnumprocs*sizeof(int));
@@ -2930,7 +2930,7 @@ float psum;
    MPI_Gather(&size_pc,1,MPI_INT,rcounts,1,MPI_INT,0,MPI_COMM_WORLD);
 
    MPI_Bcast(rcounts,dnumprocs,MPI_INT,0,MPI_COMM_WORLD);
-    cout<<"second"<<"myid="<<dmyid<<endl;
+    // cout<<"second"<<"myid="<<dmyid<<endl;
     MPI_Barrier(MPI_COMM_WORLD); 
    displs[0]=0;
    for(int i=1; i<dnumprocs; ++i){displs[i]=displs[i-1]+rcounts[i-1];}
@@ -3029,7 +3029,7 @@ static void cryst_order(double *drbuf_x, double *drbuf_y, double *drbuf_z, int d
 
 	int num_t = 0;
 	for (int tt = 0; tt<dsize_buf; tt++) { if (drbuf_x[tt] >= 0) num_t++; }
-	cout << "dsize_buf=" << dsize_buf << " , num_t=" << num_t << endl;
+	// cout << "dsize_buf=" << dsize_buf << " , num_t=" << num_t << endl;
 
 
 
@@ -3043,7 +3043,7 @@ static void cryst_order(double *drbuf_x, double *drbuf_y, double *drbuf_z, int d
 	}
 
 
-	cout << "initial Nb" << endl;
+	// cout << "initial Nb" << endl;
 
 	for (int i = 0; i<dsize_buf; i++) {
 		for (int j = 0; j<dsize_buf; j++) {
@@ -3229,7 +3229,7 @@ static void cryst_order(double *drbuf_x, double *drbuf_y, double *drbuf_z, int d
 	//q4 done#####################################################################
 
 
-	cout << "q4calculation done" << endl;
+	// cout << "q4calculation done" << endl;
 
 
 
@@ -3338,7 +3338,7 @@ static void cryst_order(double *drbuf_x, double *drbuf_y, double *drbuf_z, int d
 
 	int num_atoms_total = 0;
 	for (int i = 0; i<dsize_buf; i++) { if (drbuf_x[i] >= 0) { num_atoms_total++; } }
-	cout << "num_atoms_totalcry=" << num_atoms_total << endl;
+	// cout << "num_atoms_totalcry=" << num_atoms_total << endl;
 
 	char filename[20];
 	sprintf(filename, "%s%d%s", "q4q6_", kd, ".txt");
@@ -3628,7 +3628,7 @@ static void elastic3D(double *drbuf_x, double *drbuf_y, double *drbuf_z, int dsi
 
 	int num_t = 0;
 	for (int tt = 0; tt<dsize_buf; tt++) { if (drbuf_x[tt] >= 0) num_t++; }
-	cout << "dsize_buf=" << dsize_buf << " , num_t=" << num_t << endl;
+	// cout << "dsize_buf=" << dsize_buf << " , num_t=" << num_t << endl;
 
 
 
@@ -3641,7 +3641,7 @@ static void elastic3D(double *drbuf_x, double *drbuf_y, double *drbuf_z, int dsi
 		stnener[ii]=0;
 		}
 
-	cout << "initial Nb" << endl;
+	// cout << "initial Nb" << endl;
 
 	for (int i = 0; i<dsize_buf; i++) {
 		num_crs[i]=0;

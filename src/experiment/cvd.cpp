@@ -424,6 +424,7 @@ for(int t=0;t<total_steps; t++){  //*
 
 	if ((t % mod) == 0) {
 		kd = t;
+		atompositionCFGC2(phi, local_n0, local_0_start, myid, numprocs);
 		sVTKwriteBianry(phi, local_n0, local_0_start, myid, numprocs);
 		PVTKWRITE(local_n0, numprocs, 0, N, Pname);
 		sVTKwriteBianryc(con, local_n0, local_0_start, myid, numprocs);
@@ -1164,7 +1165,7 @@ static void atompositionCFGC2(fftw_complex *dphi,int dlocal_n0,int dlocal_0_star
    ophimax<<" pc_xyz is done "<<endl; 
 
   if (num_atoms==0) {pc_x[0]=-1; pc_y[0]=-1; pc_z[0]=-1;num_atoms=1;}// add false data if num_atoms is zero
-    cout<<num_atoms<<" "<<kd<<" "<<dmyid<<endl;
+    // cout<<num_atoms<<" "<<kd<<" "<<dmyid<<endl;
    int * rcounts, *displs;
 
 
@@ -1177,7 +1178,7 @@ static void atompositionCFGC2(fftw_complex *dphi,int dlocal_n0,int dlocal_0_star
    MPI_Gather(&size_pc,1,MPI_INT,rcounts,1,MPI_INT,0,MPI_COMM_WORLD);
 
    MPI_Bcast(rcounts,dnumprocs,MPI_INT,0,MPI_COMM_WORLD);
-    cout<<"second"<<"myid="<<dmyid<<endl;
+    // cout<<"second"<<"myid="<<dmyid<<endl;
     MPI_Barrier(MPI_COMM_WORLD); 
    displs[0]=0;
    for(int i=1; i<dnumprocs; ++i){displs[i]=displs[i-1]+rcounts[i-1];}
@@ -1195,7 +1196,7 @@ static void atompositionCFGC2(fftw_complex *dphi,int dlocal_n0,int dlocal_0_star
 
       ophimax<<" pc_xyz has been gathered "<<endl; 
 
-    cout<<"third"<<"myid="<<dmyid<<endl;
+    // cout<<"third"<<"myid="<<dmyid<<endl;
    if (dmyid==0) {
     int num_atoms_total=0;
     for (int i=0; i<size_buf; i++) {if (rbuf_x[i]>=0) {num_atoms_total++; }}
@@ -1222,10 +1223,26 @@ static void atompositionCFGC2(fftw_complex *dphi,int dlocal_n0,int dlocal_0_star
     outfile << "Cu"<<endl;
 
     for (int i=0; i<size_buf;i++) {
-        if (rbuf_x[i]>=0)   outfile <<rbuf_x[i]<<" "<<rbuf_y[i]<<" "<<rbuf_z[i]<<endl;} 
+        if (rbuf_x[i]>=0)   outfile <<rbuf_x[i]<<" "<<rbuf_y[i]<<" "<<rbuf_z[i]<<endl;}
     outfile.close();
-	ophimax<<" atomeye is done "<<endl;
-      ophimax.close();
+
+    // Write Phimax_*.txt (heatmap-friendly format for Visualizer)
+    {
+        char phimaxname[32];
+        sprintf(phimaxname, "%s%d%s", "Phimax_", kd, ".txt");
+        ofstream phimaxfile(phimaxname, ios_base::out);
+        phimaxfile.setf(ios_base::fixed, ios_base::floatfield);
+        phimaxfile.precision(4);
+        phimaxfile << num_atoms_total << endl;
+        phimaxfile << "Kommentar" << endl;
+        for (int i = 0; i < size_buf; i++) {
+            if (rbuf_x[i] >= 0)
+                phimaxfile << rbuf_x[i]*frame_y << " " << rbuf_y[i]*frame_z << " " << rbuf_z[i]*frame_x << " " << 1.0 << endl;
+        }
+        phimaxfile.close();
+    }
+
+	ophimax.close();
 
 	GR( rbuf_x,  rbuf_y,  rbuf_z, size_buf);
 	if(kd>=0 && kd%20==0) Q6_GLO( rbuf_x,  rbuf_y,  rbuf_z, size_buf);
