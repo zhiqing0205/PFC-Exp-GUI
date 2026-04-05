@@ -21,6 +21,7 @@ class QProgressBar;
 class QResizeEvent;
 class QSpinBox;
 class QStackedWidget;
+class QButtonGroup;
 class QPushButton;
 class QTabWidget;
 class QTableWidget;
@@ -76,6 +77,7 @@ private slots:
     void updateExperimentPreview();
     void updateElasticInputSummary();
     void showAboutDialog();
+    void showWelcomeDialog();
     void uploadLicense();
 
     void onProcessReadyRead();
@@ -160,7 +162,8 @@ private:
 
     QVector<SweepParamWidgets> sweepParams_;
 
-    QTabWidget* experimentSubTabs_ = nullptr;
+    QButtonGroup* modelButtonGroup_ = nullptr;
+    QStackedWidget* modelParamStack_ = nullptr;
     QVector<SweepParamWidgets> sweepParamsMisfit_;
     QVector<SweepParamWidgets> sweepParamsCvd_;
     QPushButton* expRunBtn_ = nullptr;

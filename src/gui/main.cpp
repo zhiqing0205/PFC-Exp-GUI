@@ -390,12 +390,44 @@ QStatusBar QToolButton {
 QStatusBar QToolButton:hover {
   background: #E5E7EB;
 }
+
+/* Model toggle segmented control */
+QPushButton[modelToggle="true"] {
+  border: 1px solid #D1D5DB;
+  padding: 6px 20px;
+  background: #F3F4F6;
+  font-weight: 500;
+  font-size: 13px;
+}
+QPushButton[modelToggle="true"][togglePos="left"] {
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+  border-top-right-radius: 0px;
+  border-bottom-right-radius: 0px;
+  margin-right: -1px;
+}
+QPushButton[modelToggle="true"][togglePos="right"] {
+  border-top-left-radius: 0px;
+  border-bottom-left-radius: 0px;
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+QPushButton[modelToggle="true"]:checked {
+  background: #2563EB;
+  color: white;
+  border-color: #2563EB;
+}
+QPushButton[modelToggle="true"]:hover:!checked {
+  background: #E5E7EB;
+  border-color: #9CA3AF;
+}
 )QSS");
 }
 
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     app.setApplicationName("MID Nano");
+    app.setOrganizationName("MIDNano");
 #ifdef MID_NANO_VERSION
     app.setApplicationVersion(QString::fromUtf8(MID_NANO_VERSION));
 #endif

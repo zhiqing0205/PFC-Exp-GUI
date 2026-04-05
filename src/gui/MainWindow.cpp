@@ -52,9 +52,12 @@
 #include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QButtonGroup>
 #include <QFontDatabase>
+#include <QSettings>
 #include <QTableWidget>
 #include <QHeaderView>
+#include <QTimer>
 #include <QWheelEvent>
 #include <QResizeEvent>
 
@@ -539,11 +542,36 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         return {page, grid};
     };
 
-    // -- Create the sub-tab widget --
-    experimentSubTabs_ = new QTabWidget;
-    experimentSubTabs_->setDocumentMode(true);
+    // -- Model toggle buttons (segmented control) --
+    auto* modelToggleRow = new QWidget;
+    auto* modelToggleLayout = new QHBoxLayout;
+    modelToggleLayout->setContentsMargins(0, 2, 0, 2);
+    modelToggleLayout->setSpacing(0);
 
-    // --- Misfit sub-tab ---
+    auto* misfitBtn = new QPushButton("Misfit");
+    misfitBtn->setCheckable(true);
+    misfitBtn->setChecked(true);
+    misfitBtn->setProperty("modelToggle", true);
+    misfitBtn->setProperty("togglePos", "left");
+
+    auto* cvdBtn = new QPushButton("CVD");
+    cvdBtn->setCheckable(true);
+    cvdBtn->setProperty("modelToggle", true);
+    cvdBtn->setProperty("togglePos", "right");
+
+    modelButtonGroup_ = new QButtonGroup(this);
+    modelButtonGroup_->setExclusive(true);
+    modelButtonGroup_->addButton(misfitBtn, 0);
+    modelButtonGroup_->addButton(cvdBtn, 1);
+
+    modelToggleLayout->addWidget(misfitBtn);
+    modelToggleLayout->addWidget(cvdBtn);
+    modelToggleLayout->addStretch(1);
+    modelToggleRow->setLayout(modelToggleLayout);
+
+    modelParamStack_ = new QStackedWidget;
+
+    // --- Misfit page ---
     {
         auto [page, grid] = makeModelPage(sweepParamsMisfit_);
         addDoubleParamTo(grid, sweepParamsMisfit_, "u0",   "u0",   -2.0, 2.0,  0.05,  6, 0.01);
@@ -554,10 +582,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         addIntParamTo(grid, sweepParamsMisfit_, "steps", "steps", 1, 100000000, 200,      10, "e.g. 100,200,300");
         addIntParamTo(grid, sweepParamsMisfit_, "mod",   "mod",   1, 100000000, 25,       1,  "e.g. 25,50,100");
         addIntParamTo(grid, sweepParamsMisfit_, "seed",  "seed",  0, 2147483647, 20200604, 1, "e.g. 1,2,3");
-        experimentSubTabs_->addTab(page, "Misfit");
+        modelParamStack_->addWidget(page);
     }
 
-    // --- CVD sub-tab ---
+    // --- CVD page ---
     {
         auto [page, grid] = makeModelPage(sweepParamsCvd_);
         addDoubleParamTo(grid, sweepParamsCvd_, "u0",   "u0",   -2.0, 2.0,  0.01,  6, 0.01);
@@ -568,16 +596,17 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         addIntParamTo(grid, sweepParamsCvd_, "steps", "steps", 1, 100000000, 2000,     10, "e.g. 100,200,300");
         addIntParamTo(grid, sweepParamsCvd_, "mod",   "mod",   1, 100000000, 200,      1,  "e.g. 25,50,100");
         addIntParamTo(grid, sweepParamsCvd_, "seed",  "seed",  0, 2147483647, 20200604, 1, "e.g. 1,2,3");
-        experimentSubTabs_->addTab(page, "CVD");
+        modelParamStack_->addWidget(page);
     }
 
-    connect(experimentSubTabs_, &QTabWidget::currentChanged, this, [this](int) {
+    connect(modelButtonGroup_, &QButtonGroup::idClicked, this, [this](int id) {
+        if (modelParamStack_) modelParamStack_->setCurrentIndex(id);
         updateExperimentPreview();
     });
 
     auto* simFlowHint = new QLabel(
-        "Misfit / CVD 是主仿真模型；Elastic 现在单独放到“Elastic Analysis”页，因为它会读取已有的 "
-        "phi_*.vti / con_*.vti 做后处理，而不是直接产出这些场。");
+        "Misfit and CVD are forward simulation models. Elastic Analysis is on a separate tab "
+        "because it post-processes existing phi/con VTI checkpoints rather than producing them.");
     simFlowHint->setProperty("hint", true);
     simFlowHint->setWordWrap(true);
 
@@ -636,7 +665,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     expButtons->setLayout(expButtonsLayout);
 
     expLayout->addWidget(simFlowHint);
-    expLayout->addWidget(experimentSubTabs_);
+    expLayout->addWidget(modelToggleRow);
+    expLayout->addWidget(modelParamStack_);
     expLayout->addWidget(expPreview_);
     expLayout->addWidget(expOutBox);
     expLayout->addWidget(expStepProgress_);
@@ -1035,6 +1065,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     updateElasticOutputDirState();
     updateElasticInputSummary();
     setRunningUi(false);
+
+    // Show welcome dialog on first launch
+    {
+        QSettings settings;
+        if (!settings.value("welcome/shown", false).toBool()) {
+            QTimer::singleShot(0, this, &MainWindow::showWelcomeDialog);
+        }
+    }
 }
 
 QString MainWindow::cliPath() const {
@@ -2529,8 +2567,8 @@ void MainWindow::updateStatusLogText() {
 }
 
 PfcModel MainWindow::activeModel() const {
-    if (!experimentSubTabs_) return PfcModel::Misfit;
-    switch (experimentSubTabs_->currentIndex()) {
+    if (!modelButtonGroup_) return PfcModel::Misfit;
+    switch (modelButtonGroup_->checkedId()) {
         case 1:  return PfcModel::CVD;
         default: return PfcModel::Misfit;
     }
@@ -2546,7 +2584,11 @@ QVector<MainWindow::SweepParamWidgets>& MainWindow::activeModelParams() {
 void MainWindow::setRunningUi(bool running) {
     if (expRunBtn_) expRunBtn_->setEnabled(!running);
     if (expStopBtn_) expStopBtn_->setEnabled(running);
-    if (experimentSubTabs_) experimentSubTabs_->setEnabled(!running);
+    if (modelParamStack_) modelParamStack_->setEnabled(!running);
+    if (modelButtonGroup_) {
+        const auto buttons = modelButtonGroup_->buttons();
+        for (auto* btn : buttons) btn->setEnabled(!running);
+    }
     if (elasticRunBtn_) elasticRunBtn_->setEnabled(!running);
     if (elasticStopBtn_) elasticStopBtn_->setEnabled(running);
     if (elasticControls_) elasticControls_->setEnabled(!running);
@@ -2987,11 +3029,82 @@ void MainWindow::showAboutDialog() {
     scroll->setWidget(content);
     layout->addWidget(scroll, 1);
 
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok);
-    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
-    layout->addWidget(buttons);
+    auto* bottomRow = new QHBoxLayout;
+    auto* welcomeBtn = new QPushButton("Show Welcome Guide");
+    welcomeBtn->setIcon(style()->standardIcon(QStyle::SP_DialogHelpButton));
+    connect(welcomeBtn, &QPushButton::clicked, this, [this, &dlg]() {
+        dlg.accept();
+        showWelcomeDialog();
+    });
+    bottomRow->addWidget(welcomeBtn);
+    bottomRow->addStretch(1);
+    auto* okBtn = new QPushButton("OK");
+    okBtn->setDefault(true);
+    connect(okBtn, &QPushButton::clicked, &dlg, &QDialog::accept);
+    bottomRow->addWidget(okBtn);
+    layout->addLayout(bottomRow);
 
     dlg.exec();
+}
+
+void MainWindow::showWelcomeDialog() {
+    QDialog dlg(this);
+    dlg.setWindowTitle("Welcome to MID Nano");
+    dlg.setModal(true);
+    dlg.setFixedSize(560, 440);
+
+    auto* layout = new QVBoxLayout(&dlg);
+    layout->setSpacing(14);
+    layout->setContentsMargins(28, 24, 28, 20);
+
+    auto* title = new QLabel(
+        "<div style='font-size:20pt; font-weight:700; color:#2563EB;'>MID Nano</div>"
+        "<div style='font-size:11pt; color:#6B7280; margin-top:2px;'>Phase-Field Crystal Experiment Suite</div>");
+    title->setTextFormat(Qt::RichText);
+    title->setAlignment(Qt::AlignHCenter);
+    layout->addWidget(title);
+
+    auto* workflow = new QLabel(
+        "<div style='font-size:11pt; line-height:1.6;'>"
+        "<table cellpadding='6' cellspacing='0' width='100%'>"
+        "<tr><td style='background:#EFF6FF; border:1px solid #DBEAFE; border-radius:6px; "
+        "padding:10px 16px; text-align:center;'>"
+        "<b style='font-size:12pt;'>1. Simulation</b><br/>"
+        "<span style='color:#6B7280;'>Run Misfit / CVD models &mdash; produces phi/con VTI checkpoints</span></td></tr>"
+        "<tr><td style='text-align:center; font-size:16pt; color:#2563EB; padding:2px;'>&darr;</td></tr>"
+        "<tr><td style='background:#EFF6FF; border:1px solid #DBEAFE; border-radius:6px; "
+        "padding:10px 16px; text-align:center;'>"
+        "<b style='font-size:12pt;'>2. Elastic Analysis</b><br/>"
+        "<span style='color:#6B7280;'>Post-process VTI &rarr; Phimax / strain / Q4 / Q6 files</span></td></tr>"
+        "<tr><td style='text-align:center; font-size:16pt; color:#2563EB; padding:2px;'>&darr;</td></tr>"
+        "<tr><td style='background:#EFF6FF; border:1px solid #DBEAFE; border-radius:6px; "
+        "padding:10px 16px; text-align:center;'>"
+        "<b style='font-size:12pt;'>3. Visualizer</b><br/>"
+        "<span style='color:#6B7280;'>Render heatmaps and data tables from result files</span></td></tr>"
+        "</table></div>");
+    workflow->setTextFormat(Qt::RichText);
+    workflow->setAlignment(Qt::AlignCenter);
+    workflow->setWordWrap(true);
+    layout->addWidget(workflow);
+
+    layout->addStretch(1);
+
+    auto* dontShow = new QCheckBox("Don't show this again");
+    layout->addWidget(dontShow, 0, Qt::AlignCenter);
+
+    auto* getStarted = new QPushButton("Get Started");
+    getStarted->setProperty("primary", true);
+    getStarted->setFixedWidth(160);
+    layout->addWidget(getStarted, 0, Qt::AlignCenter);
+
+    connect(getStarted, &QPushButton::clicked, &dlg, &QDialog::accept);
+
+    dlg.exec();
+
+    if (dontShow->isChecked()) {
+        QSettings settings;
+        settings.setValue("welcome/shown", true);
+    }
 }
 
 void MainWindow::uploadLicense() {
