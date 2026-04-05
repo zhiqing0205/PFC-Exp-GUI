@@ -180,6 +180,9 @@ private:
     QSpinBox* elasticMod_ = nullptr;
     QSpinBox* elasticSeed_ = nullptr;
     QDoubleSpinBox* elasticBenchel_ = nullptr;
+    QSpinBox* elasticGrainx_ = nullptr;
+    QSpinBox* elasticGrainy_ = nullptr;
+    QSpinBox* elasticGrainz_ = nullptr;
     QPushButton* elasticRunBtn_ = nullptr;
     QPushButton* elasticStopBtn_ = nullptr;
     QProgressBar* elasticStepProgress_ = nullptr;

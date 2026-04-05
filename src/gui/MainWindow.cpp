@@ -216,6 +216,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     auto* expTab = new QWidget;
     auto* resultsTab = new QWidget;
+    auto* elasticTab = new QWidget;
     auto* manufacturingTab = new QWidget;
     auto* transformationTab = new QWidget;
     auto* mechanicsTab = new QWidget;
@@ -229,6 +230,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     resultsScroll->setFrameShape(QFrame::NoFrame);
     resultsScroll->setWidgetResizable(true);
     resultsScroll->setWidget(resultsTab);
+
+    auto* elasticScroll = new QScrollArea;
+    elasticScroll->setFrameShape(QFrame::NoFrame);
+    elasticScroll->setWidgetResizable(true);
+    elasticScroll->setWidget(elasticTab);
 
     auto* manufacturingScroll = new QScrollArea;
     manufacturingScroll->setFrameShape(QFrame::NoFrame);
@@ -247,9 +253,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     tabs->addTab(expScroll, "Simulation");
     tabs->addTab(resultsScroll, "Visualizer");
+    elasticMainTabIndex_ = tabs->addTab(elasticScroll, "Elastic Analysis");
     tabs->addTab(manufacturingScroll, "Manufacturing");
     tabs->addTab(transformationScroll, "Transformation");
-    elasticMainTabIndex_ = tabs->addTab(mechanicsScroll, "Elastic Analysis");
+    tabs->addTab(mechanicsScroll, "Stress\u2013Strain");
 
     connect(tabs, &QTabWidget::currentChanged, this, [this, tabs, resultsScroll](int) {
         if (!resultsScroll) return;
@@ -863,10 +870,19 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             << "Compare checkpoint snapshots (Δ images / metrics)"
             << "Optional peak-based orientation/defect analysis");
 
+    setupRoadmapTab(
+        mechanicsTab,
+        "Stress\u2013Strain",
+        "Planned mechanical loading and analysis features. This page is a placeholder.",
+        QStringList()
+            << "Uniaxial / shear loading presets"
+            << "Stress\u2013strain curve export"
+            << "Batch sweep on loading rate / amplitude");
+
     {
         auto* elasticLayout = new QVBoxLayout;
         elasticLayout->setSpacing(10);
-        mechanicsTab->setLayout(elasticLayout);
+        elasticTab->setLayout(elasticLayout);
 
         auto* elasticFlowHint = new QLabel(
             "Elastic Analysis 不是前向求解器，而是后处理入口：读取已有的 phi_*.vti / con_*.vti，输出 "
@@ -947,6 +963,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         elasticSeed_ = makeIntSpin(0, 2147483647, 20200604, 1, true);
         elasticBenchel_ = makeDoubleSpin(0.1, 100.0, 1.7, 6, 0.1, true);
         elasticBenchel_->setToolTip("Neighbor cutoff used by elastic3D strain analysis.");
+        elasticGrainx_ = makeIntSpin(1, 1024, 2, 1, true);
+        elasticGrainy_ = makeIntSpin(1, 1024, 2, 1, true);
+        elasticGrainz_ = makeIntSpin(1, 1024, 1, 1, true);
 
         elasticParamForm->addRow("u0", elasticU0_);
         elasticParamForm->addRow("con0", elasticCon0_);
@@ -957,6 +976,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         elasticParamForm->addRow("mod", elasticMod_);
         elasticParamForm->addRow("seed", elasticSeed_);
         elasticParamForm->addRow("benchel", elasticBenchel_);
+        elasticParamForm->addRow("grainx", elasticGrainx_);
+        elasticParamForm->addRow("grainy", elasticGrainy_);
+        elasticParamForm->addRow("grainz", elasticGrainz_);
         elasticParamBox->setLayout(elasticParamForm);
         elasticControlsLayout->addWidget(elasticParamBox);
 
@@ -1135,6 +1157,9 @@ bool MainWindow::populateElasticFieldsFromRunConfig(const QString& dirPath, QStr
     setIntIfPresent("steps", elasticSteps_);
     setIntIfPresent("mod", elasticMod_);
     setIntIfPresent("seed", elasticSeed_);
+    setIntIfPresent("grainx", elasticGrainx_);
+    setIntIfPresent("grainy", elasticGrainy_);
+    setIntIfPresent("grainz", elasticGrainz_);
 
     const QString model = cfg.value("model");
     if (messageOut) {
@@ -2097,6 +2122,9 @@ QStringList MainWindow::buildArgs(const RunParams& params, const QString& outDir
     args << "--seed" << QString::number(params.seed);
     if (params.model == PfcModel::Elastic) {
         args << "--benchel" << f(params.benchel);
+        args << "--grainx" << QString::number(params.grainx);
+        args << "--grainy" << QString::number(params.grainy);
+        args << "--grainz" << QString::number(params.grainz);
         if (!params.inputDir.trimmed().isEmpty()) {
             args << "--input-dir" << params.inputDir;
         }
@@ -2705,6 +2733,9 @@ void MainWindow::startElasticAnalysis() {
     job.params.mod = elasticMod_->value();
     job.params.seed = elasticSeed_->value();
     job.params.benchel = elasticBenchel_->value();
+    job.params.grainx = elasticGrainx_ ? elasticGrainx_->value() : 2;
+    job.params.grainy = elasticGrainy_ ? elasticGrainy_->value() : 2;
+    job.params.grainz = elasticGrainz_ ? elasticGrainz_->value() : 1;
     job.params.inputDir = inputDir;
 
     jobQueue_.clear();

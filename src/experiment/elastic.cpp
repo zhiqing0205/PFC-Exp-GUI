@@ -495,16 +495,24 @@ for (int n=N/2+1; n <N; n ++)	krefn[n]=(n-N)*2.0*pi/(N*dx);
             phimax_atmposi(phi,local_n0,local_0_start,myid,numprocs);
 	    }
     } else {
+        // Fallback: iterate by mod steps when no checkpoint files were detected.
+        // Count how many analysis steps we'll actually perform.
+        int num_analysis_steps = 0;
+        for (int t = 0; t < total_steps; t++) {
+            const int output_step = t + 1;
+            if ((output_step % mod) == 0 || output_step == total_steps)
+                ++num_analysis_steps;
+        }
+        int analysis_done = 0;
 	    for (int t = 0; t < total_steps; t++) {
             const int output_step = t + 1;
-            kd = output_step;
-
-            if (myid == 0) {
-                fprintf(stderr, "PFC_PROGRESS step=%d total=%d\n", output_step, total_steps);
-                fflush(stderr);
-            }
-
             if ((output_step % mod) == 0 || output_step == total_steps) {
+                kd = output_step;
+                ++analysis_done;
+                if (myid == 0) {
+                    fprintf(stderr, "PFC_PROGRESS step=%d total=%d\n", analysis_done, num_analysis_steps);
+                    fflush(stderr);
+                }
                 READPHIVTIN(phi, local_n0, myid);
                 READPHIVTIC(con, local_n0, myid);
                 phimax_atmposi(phi,local_n0,local_0_start,myid,numprocs);
