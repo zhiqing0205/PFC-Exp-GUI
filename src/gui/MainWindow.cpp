@@ -255,8 +255,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     mechanicsScroll->setWidget(mechanicsTab);
 
     tabs->addTab(expScroll, "Simulation");
-    tabs->addTab(resultsScroll, "Visualizer");
     elasticMainTabIndex_ = tabs->addTab(elasticScroll, "Elastic Analysis");
+    tabs->addTab(resultsScroll, "Visualizer");
     tabs->addTab(manufacturingScroll, "Manufacturing");
     tabs->addTab(transformationScroll, "Transformation");
     tabs->addTab(mechanicsScroll, "Stress\u2013Strain");
@@ -915,9 +915,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         elasticTab->setLayout(elasticLayout);
 
         auto* elasticFlowHint = new QLabel(
-            "Elastic Analysis 不是前向求解器，而是后处理入口：读取已有的 phi_*.vti / con_*.vti，输出 "
-            "Phimax_*.txt / strain_*.txt。当前版本的 Misfit 和 CVD 都会按 checkpoint 写出这些 VTI，"
-            "因此两条链路都可直接接到 Elastic Analysis。");
+            "Elastic Analysis is a post-processing step (not a forward solver). It reads existing "
+            "phi_*.vti / con_*.vti checkpoints and produces strain_*.txt, Phimax_*.txt, and Q4/Q6 files. "
+            "Both Misfit and CVD write these VTI checkpoints, so either can feed into Elastic Analysis. "
+            "This step is optional \u2014 basic results (energy, Phimax) can be visualized directly.");
         elasticFlowHint->setProperty("hint", true);
         elasticFlowHint->setWordWrap(true);
         elasticLayout->addWidget(elasticFlowHint);
@@ -975,8 +976,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         elasticControlsLayout->addWidget(elasticIoBox);
 
         elasticInputSummary_ = new QLabel(
-            "选择一个包含 phi_*.vti / con_*.vti 的目录后，这里会显示检测到的 checkpoint，并尽量从 "
-            "run_config.txt 自动回填参数。");
+            "After selecting a directory with phi_*.vti / con_*.vti files, detected checkpoints will be "
+            "shown here. Parameters are auto-populated from run_config.txt when available.");
         elasticInputSummary_->setProperty("hint", true);
         elasticInputSummary_->setWordWrap(true);
         elasticControlsLayout->addWidget(elasticInputSummary_);
@@ -1269,8 +1270,8 @@ void MainWindow::updateElasticInputSummary() {
 
     if (dirPath.isEmpty()) {
         elasticInputSummary_->setText(
-            "选择输入目录后，程序会检查是否存在成对的 phi_*.vti / con_*.vti，并自动尝试从 run_config.txt "
-            "回填 u0/con0/dx/steps/mod 等参数。");
+            "Select an input directory to scan for paired phi_*.vti / con_*.vti files. "
+            "Parameters will be auto-populated from run_config.txt if present.");
         return;
     }
 
@@ -1292,8 +1293,8 @@ void MainWindow::updateElasticInputSummary() {
 
     if (steps.isEmpty()) {
         elasticInputSummary_->setText(
-            "未检测到成对的 phi_*.vti / con_*.vti checkpoint。Elastic 只能读取这类 VTI 输入；"
-            "请确认该目录来自当前版本的 Misfit/CVD 运行，并且确实完成了 checkpoint 输出。");
+            "No paired phi_*.vti / con_*.vti checkpoints found. Elastic Analysis requires these VTI files. "
+            "Make sure the directory is from a Misfit/CVD run that completed writing checkpoints.");
         return;
     }
 
@@ -3051,54 +3052,199 @@ void MainWindow::showWelcomeDialog() {
     QDialog dlg(this);
     dlg.setWindowTitle("Welcome to MID Nano");
     dlg.setModal(true);
-    dlg.setFixedSize(560, 440);
+    dlg.setFixedSize(620, 520);
 
     auto* layout = new QVBoxLayout(&dlg);
-    layout->setSpacing(14);
-    layout->setContentsMargins(28, 24, 28, 20);
+    layout->setSpacing(0);
+    layout->setContentsMargins(0, 0, 0, 0);
 
-    auto* title = new QLabel(
-        "<div style='font-size:20pt; font-weight:700; color:#2563EB;'>MID Nano</div>"
-        "<div style='font-size:11pt; color:#6B7280; margin-top:2px;'>Phase-Field Crystal Experiment Suite</div>");
-    title->setTextFormat(Qt::RichText);
-    title->setAlignment(Qt::AlignHCenter);
-    layout->addWidget(title);
+    auto* stack = new QStackedWidget;
 
-    auto* workflow = new QLabel(
-        "<div style='font-size:11pt; line-height:1.6;'>"
-        "<table cellpadding='6' cellspacing='0' width='100%'>"
-        "<tr><td style='background:#EFF6FF; border:1px solid #DBEAFE; border-radius:6px; "
-        "padding:10px 16px; text-align:center;'>"
-        "<b style='font-size:12pt;'>1. Simulation</b><br/>"
-        "<span style='color:#6B7280;'>Run Misfit / CVD models &mdash; produces phi/con VTI checkpoints</span></td></tr>"
-        "<tr><td style='text-align:center; font-size:16pt; color:#2563EB; padding:2px;'>&darr;</td></tr>"
-        "<tr><td style='background:#EFF6FF; border:1px solid #DBEAFE; border-radius:6px; "
-        "padding:10px 16px; text-align:center;'>"
-        "<b style='font-size:12pt;'>2. Elastic Analysis</b><br/>"
-        "<span style='color:#6B7280;'>Post-process VTI &rarr; Phimax / strain / Q4 / Q6 files</span></td></tr>"
-        "<tr><td style='text-align:center; font-size:16pt; color:#2563EB; padding:2px;'>&darr;</td></tr>"
-        "<tr><td style='background:#EFF6FF; border:1px solid #DBEAFE; border-radius:6px; "
-        "padding:10px 16px; text-align:center;'>"
-        "<b style='font-size:12pt;'>3. Visualizer</b><br/>"
-        "<span style='color:#6B7280;'>Render heatmaps and data tables from result files</span></td></tr>"
-        "</table></div>");
-    workflow->setTextFormat(Qt::RichText);
-    workflow->setAlignment(Qt::AlignCenter);
-    workflow->setWordWrap(true);
-    layout->addWidget(workflow);
+    // --- Helper: create a page with consistent styling ---
+    auto makePage = [](const QString& titleHtml, const QString& bodyHtml) -> QWidget* {
+        auto* page = new QWidget;
+        auto* pl = new QVBoxLayout(page);
+        pl->setSpacing(10);
+        pl->setContentsMargins(32, 24, 32, 8);
 
-    layout->addStretch(1);
+        auto* t = new QLabel(titleHtml);
+        t->setTextFormat(Qt::RichText);
+        t->setAlignment(Qt::AlignHCenter);
+        t->setWordWrap(true);
+        pl->addWidget(t);
 
-    auto* dontShow = new QCheckBox("Don't show this again");
-    layout->addWidget(dontShow, 0, Qt::AlignCenter);
+        auto* b = new QLabel(bodyHtml);
+        b->setTextFormat(Qt::RichText);
+        b->setWordWrap(true);
+        b->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+        pl->addWidget(b, 1);
 
-    auto* getStarted = new QPushButton("Get Started");
-    getStarted->setProperty("primary", true);
-    getStarted->setFixedWidth(160);
-    layout->addWidget(getStarted, 0, Qt::AlignCenter);
+        return page;
+    };
 
-    connect(getStarted, &QPushButton::clicked, &dlg, &QDialog::accept);
+    const QString hdr = "font-size:18pt; font-weight:700; color:#2563EB;";
+    const QString sub = "font-size:11pt; color:#6B7280;";
+    const QString sec = "background:#EFF6FF; border:1px solid #DBEAFE; border-radius:6px; padding:10px 14px; margin-bottom:6px;";
+    const QString stl = "font-size:11pt; line-height:1.5;";
 
+    // Page 0: Overview
+    stack->addWidget(makePage(
+        QString("<div style='%1'>MID Nano</div>"
+                "<div style='%2; margin-top:2px;'>Phase-Field Crystal Experiment Suite</div>").arg(hdr, sub),
+        QString("<div style='%1'>"
+                "<p>MID Nano provides a complete pipeline for PFC simulation and analysis:</p>"
+                "<table cellpadding='5' cellspacing='0' width='100%'>"
+
+                "<tr><td style='%2'>"
+                "<b>Simulation</b> &mdash; Run Misfit or CVD forward models. "
+                "Outputs energy, Phimax, and phi/con VTI checkpoint files.</td></tr>"
+
+                "<tr><td style='text-align:center; font-size:14pt; color:#2563EB; padding:1px;'>"
+                "&darr; <span style='font-size:10pt; color:#9CA3AF;'>VTI checkpoints (optional path)</span></td></tr>"
+
+                "<tr><td style='%2'>"
+                "<b>Elastic Analysis</b> &mdash; Post-process VTI checkpoints to extract "
+                "strain tensors and crystallographic order (Q4/Q6). <i>Optional step.</i></td></tr>"
+
+                "<tr><td style='text-align:center; font-size:14pt; color:#2563EB; padding:1px;'>"
+                "&darr; <span style='font-size:10pt; color:#9CA3AF;'>TXT result files</span></td></tr>"
+
+                "<tr><td style='%2'>"
+                "<b>Visualizer</b> &mdash; Display any result TXT files as heatmaps or data tables. "
+                "Works with both Simulation and Elastic Analysis outputs.</td></tr>"
+
+                "</table></div>").arg(stl, sec)));
+
+    // Page 1: Simulation tab
+    stack->addWidget(makePage(
+        QString("<div style='%1'>Simulation</div>"
+                "<div style='%2'>Configure and run PFC forward simulations</div>").arg(hdr, sub),
+        QString("<div style='%1'>"
+
+                "<div style='%2'>"
+                "<b>Model Toggle</b><br/>"
+                "Switch between <b>Misfit</b> (misfit-strain crystallization) and <b>CVD</b> "
+                "(controlled vapor deposition two-phase growth) using the segmented buttons at the top. "
+                "Each model has its own default parameters.</div>"
+
+                "<div style='%2'>"
+                "<b>Parameter Sweep</b><br/>"
+                "Each parameter (u0, con0, sig, dt, dx, steps, mod, seed) can be set to "
+                "<b>Fixed</b> (single value), <b>Range</b> (start/end/step), or <b>List</b> (comma-separated). "
+                "The system generates a Cartesian product of all combinations and queues them for batch execution.</div>"
+
+                "<div style='%2'>"
+                "<b>Output &amp; Execution</b><br/>"
+                "Choose a base output directory and optional experiment folder name. "
+                "Click <b>Run</b> to start &mdash; each combination runs sequentially with real-time "
+                "step and overall progress bars. Click <b>Stop</b> to abort at any time.</div>"
+
+                "</div>").arg(stl, sec)));
+
+    // Page 2: Elastic Analysis tab
+    stack->addWidget(makePage(
+        QString("<div style='%1'>Elastic Analysis</div>"
+                "<div style='%2'>Post-process simulation output for strain &amp; order parameters</div>").arg(hdr, sub),
+        QString("<div style='%1'>"
+
+                "<div style='%2'>"
+                "<b>When to Use</b><br/>"
+                "Use this when you need <b>strain tensor</b> (strain_*.txt) or "
+                "<b>crystallographic order</b> (Q4/Q6) data that the forward simulation does not produce directly. "
+                "If you only need energy or Phimax data, skip this step and go straight to the Visualizer.</div>"
+
+                "<div style='%2'>"
+                "<b>Input Directory</b><br/>"
+                "Point to the output folder of a Simulation run. The app scans for paired "
+                "<code>phi_*.vti</code> / <code>con_*.vti</code> files and auto-populates parameters "
+                "from <code>run_config.txt</code>. Use the <b>Use Current Output</b> shortcut to grab "
+                "the most recent Simulation output.</div>"
+
+                "<div style='%2'>"
+                "<b>Analysis Parameters</b><br/>"
+                "Key parameter: <b>benchel</b> (neighbor cutoff for strain calculation, default 1.7). "
+                "The grain dimensions (grainx/y/z) should match the Simulation run to ensure correct analysis.</div>"
+
+                "</div>").arg(stl, sec)));
+
+    // Page 3: Visualizer tab
+    stack->addWidget(makePage(
+        QString("<div style='%1'>Visualizer</div>"
+                "<div style='%2'>Browse and render result files</div>").arg(hdr, sub),
+        QString("<div style='%1'>"
+
+                "<div style='%2'>"
+                "<b>File Browser</b><br/>"
+                "Automatically opens the latest Simulation output directory. "
+                "Browse or refresh to select any output folder. "
+                "All <code>*.txt</code> files in the directory are listed for inspection.</div>"
+
+                "<div style='%2'>"
+                "<b>Table View</b><br/>"
+                "Any text file is displayed as a formatted table with auto-detected column headers. "
+                "Special handling for <code>run_config.txt</code> (key-value pairs) and "
+                "<code>checkpoint_timestamps.txt</code> (elapsed/delta timing).</div>"
+
+                "<div style='%2'>"
+                "<b>Plot View (Heatmap)</b><br/>"
+                "Available for <code>Phimax_*.txt</code>, <code>strain_*.txt</code>, and "
+                "<code>cryst_q*.txt</code> files. Uses Gaussian kernel interpolation to render a "
+                "color-mapped heatmap. Supports mouse wheel zoom, drag-to-pan, Fit to view, "
+                "and <b>Export PNG</b>.</div>"
+
+                "</div>").arg(stl, sec)));
+
+    layout->addWidget(stack, 1);
+
+    // --- Navigation bar ---
+    auto* navBar = new QWidget;
+    auto* navLayout = new QHBoxLayout(navBar);
+    navLayout->setContentsMargins(20, 10, 20, 16);
+
+    auto* pageIndicator = new QLabel;
+    pageIndicator->setAlignment(Qt::AlignCenter);
+
+    auto* dontShow = new QCheckBox("Don't show on startup");
+
+    auto* backBtn = new QPushButton("Back");
+    auto* nextBtn = new QPushButton("Next");
+    nextBtn->setProperty("primary", true);
+
+    navLayout->addWidget(dontShow);
+    navLayout->addStretch(1);
+    navLayout->addWidget(pageIndicator);
+    navLayout->addStretch(1);
+    navLayout->addWidget(backBtn);
+    navLayout->addWidget(nextBtn);
+
+    layout->addWidget(navBar);
+
+    // --- Page navigation logic ---
+    auto updateNav = [&]() {
+        const int idx = stack->currentIndex();
+        const int total = stack->count();
+        backBtn->setEnabled(idx > 0);
+        nextBtn->setText(idx == total - 1 ? "Finish" : "Next");
+        pageIndicator->setText(QString("%1 / %2").arg(idx + 1).arg(total));
+    };
+
+    connect(backBtn, &QPushButton::clicked, &dlg, [&]() {
+        if (stack->currentIndex() > 0) {
+            stack->setCurrentIndex(stack->currentIndex() - 1);
+            updateNav();
+        }
+    });
+
+    connect(nextBtn, &QPushButton::clicked, &dlg, [&]() {
+        if (stack->currentIndex() < stack->count() - 1) {
+            stack->setCurrentIndex(stack->currentIndex() + 1);
+            updateNav();
+        } else {
+            dlg.accept();
+        }
+    });
+
+    updateNav();
     dlg.exec();
 
     if (dontShow->isChecked()) {
