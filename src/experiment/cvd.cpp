@@ -1239,9 +1239,11 @@ static void atompositionCFGC2(fftw_complex *dphi,int dlocal_n0,int dlocal_0_star
         phimaxfile.precision(4);
         phimaxfile << num_atoms_total << endl;
         phimaxfile << "Kommentar" << endl;
+        // pc_x=frac_y, pc_y=frac_z, pc_z=frac_x (AtomEye convention)
+        // Phimax needs actual spatial coords: x=pc_z*frame_x, y=pc_x*frame_y, z=pc_y*frame_z
         for (int i = 0; i < size_buf; i++) {
             if (rbuf_x[i] >= 0)
-                phimaxfile << rbuf_x[i]*frame_y << " " << rbuf_y[i]*frame_z << " " << rbuf_z[i]*frame_x << " " << rbuf_phi[i] << endl;
+                phimaxfile << rbuf_z[i]*frame_x << " " << rbuf_x[i]*frame_y << " " << rbuf_y[i]*frame_z << " " << rbuf_phi[i] << endl;
         }
         phimaxfile.close();
     }
