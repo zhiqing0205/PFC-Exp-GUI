@@ -31,6 +31,7 @@
 #include <QMenuBar>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
@@ -186,6 +187,213 @@ protected:
         }
         QGraphicsView::mouseReleaseEvent(event);
     }
+};
+
+// ---------------------------------------------------------------------------
+// TutorialOverlay — intro.js-style spotlight overlay for onboarding
+// ---------------------------------------------------------------------------
+class MainWindow::TutorialOverlay : public QWidget {
+public:
+    struct Step {
+        QWidget* target;
+        QString  title;
+        QString  description;
+        int      switchToTab;
+    };
+
+    explicit TutorialOverlay(QWidget* parent)
+        : QWidget(parent)
+    {
+        setAttribute(Qt::WA_NoSystemBackground);
+        setFocusPolicy(Qt::StrongFocus);
+
+        card_ = new QWidget(this);
+        card_->setObjectName("tutorialCard");
+        card_->setStyleSheet(
+            "#tutorialCard { background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; }");
+        card_->setFixedWidth(360);
+
+        auto* cl = new QVBoxLayout(card_);
+        cl->setContentsMargins(22, 18, 22, 18);
+        cl->setSpacing(6);
+
+        titleLabel_ = new QLabel(card_);
+        titleLabel_->setStyleSheet("font-size: 14pt; font-weight: 700; color: #1E293B;");
+        titleLabel_->setWordWrap(true);
+        cl->addWidget(titleLabel_);
+
+        descLabel_ = new QLabel(card_);
+        descLabel_->setStyleSheet("font-size: 11pt; color: #4B5563;");
+        descLabel_->setWordWrap(true);
+        cl->addWidget(descLabel_);
+
+        counterLabel_ = new QLabel(card_);
+        counterLabel_->setStyleSheet("font-size: 10pt; color: #9CA3AF; margin-top: 4px;");
+        cl->addWidget(counterLabel_);
+
+        auto* br = new QWidget(card_);
+        auto* bl = new QHBoxLayout(br);
+        bl->setContentsMargins(0, 6, 0, 0);
+        bl->setSpacing(8);
+
+        skipBtn_ = new QPushButton("Skip", br);
+        skipBtn_->setStyleSheet(
+            "QPushButton { background: transparent; border: none; color: #9CA3AF;"
+            " font-size: 10pt; padding: 6px 12px; }"
+            "QPushButton:hover { color: #6B7280; }");
+
+        backBtn_ = new QPushButton("Back", br);
+        backBtn_->setStyleSheet(
+            "QPushButton { background: #F3F4F6; border: 1px solid #D1D5DB;"
+            " border-radius: 8px; padding: 8px 18px; font-weight: 500; }"
+            "QPushButton:hover { background: #E5E7EB; }");
+
+        nextBtn_ = new QPushButton("Next", br);
+        nextBtn_->setStyleSheet(
+            "QPushButton { background: #2563EB; border: 1px solid #2563EB;"
+            " border-radius: 8px; color: white; padding: 8px 18px; font-weight: 700; }"
+            "QPushButton:hover { background: #3B82F6; border-color: #3B82F6; }");
+
+        bl->addWidget(skipBtn_);
+        bl->addStretch(1);
+        bl->addWidget(backBtn_);
+        bl->addWidget(nextBtn_);
+        cl->addWidget(br);
+
+        connect(nextBtn_, &QPushButton::clicked, this, [this]() {
+            if (current_ < steps_.size() - 1) showStep(current_ + 1);
+            else finish();
+        });
+        connect(backBtn_, &QPushButton::clicked, this, [this]() {
+            if (current_ > 0) showStep(current_ - 1);
+        });
+        connect(skipBtn_, &QPushButton::clicked, this, [this]() { finish(); });
+
+        hide();
+    }
+
+    void setSteps(const QVector<Step>& s) { steps_ = s; }
+    void setTabWidget(QTabWidget* tw) { tabWidget_ = tw; }
+
+    void start() {
+        if (steps_.isEmpty()) return;
+        auto* p = parentWidget();
+        if (!p) return;
+        resize(p->size());
+        raise();
+        show();
+        showStep(0);
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+
+        QPainterPath full;
+        full.addRect(rect());
+
+        if (current_ >= 0 && current_ < steps_.size()) {
+            QWidget* target = steps_[current_].target;
+            if (target && target->isVisible()) {
+                QRect tr = target->rect();
+                QPoint tl = target->mapTo(this, tr.topLeft());
+                QRect mapped(tl, tr.size());
+                QRect hr = mapped.adjusted(-8, -8, 8, 8);
+
+                QPainterPath cutout;
+                cutout.addRoundedRect(QRectF(hr), 8, 8);
+                painter.fillPath(full.subtracted(cutout), QColor(0, 0, 0, 150));
+
+                painter.setPen(QPen(QColor("#2563EB"), 2.5));
+                painter.setBrush(Qt::NoBrush);
+                painter.drawRoundedRect(QRectF(hr), 8, 8);
+                return;
+            }
+        }
+        painter.fillPath(full, QColor(0, 0, 0, 150));
+    }
+
+    void mousePressEvent(QMouseEvent* e) override { e->accept(); }
+
+    bool event(QEvent* e) override {
+        if (e->type() == QEvent::Resize || e->type() == QEvent::Move) {
+            if (auto* p = parentWidget()) resize(p->size());
+        }
+        return QWidget::event(e);
+    }
+
+private:
+    void showStep(int idx) {
+        if (idx < 0 || idx >= steps_.size()) return;
+        current_ = idx;
+        const Step& s = steps_[current_];
+
+        if (s.switchToTab >= 0 && tabWidget_)
+            tabWidget_->setCurrentIndex(s.switchToTab);
+
+        if (s.target) {
+            QWidget* a = s.target->parentWidget();
+            while (a) {
+                if (auto* sa = qobject_cast<QScrollArea*>(a)) {
+                    sa->ensureWidgetVisible(s.target, 50, 50);
+                    break;
+                }
+                a = a->parentWidget();
+            }
+        }
+
+        titleLabel_->setText(s.title);
+        descLabel_->setText(s.description);
+        counterLabel_->setText(QString("Step %1 of %2").arg(current_ + 1).arg(steps_.size()));
+        backBtn_->setEnabled(current_ > 0);
+        nextBtn_->setText(current_ == steps_.size() - 1 ? "Finish" : "Next");
+
+        positionCard();
+        if (auto* p = parentWidget()) resize(p->size());
+        update();
+    }
+
+    void positionCard() {
+        QWidget* target = (current_ >= 0 && current_ < steps_.size()) ? steps_[current_].target : nullptr;
+        card_->adjustSize();
+        int cw = card_->width(), ch = card_->height();
+
+        if (!target || !target->isVisible()) {
+            card_->move((width() - cw) / 2, (height() - ch) / 2);
+            card_->raise(); card_->show(); return;
+        }
+
+        QRect tr = target->rect();
+        QPoint tl = target->mapTo(this, tr.topLeft());
+        QRect hr = QRect(tl, tr.size()).adjusted(-8, -8, 8, 8);
+        int gap = 14, cx = 0, cy = 0;
+        bool ok = false;
+
+        if (!ok && hr.bottom() + gap + ch <= height()) { cx = hr.left(); cy = hr.bottom() + gap; ok = true; }
+        if (!ok && hr.top() - gap - ch >= 0)            { cx = hr.left(); cy = hr.top() - gap - ch; ok = true; }
+        if (!ok && hr.right() + gap + cw <= width())    { cx = hr.right() + gap; cy = hr.top(); ok = true; }
+        if (!ok && hr.left() - gap - cw >= 0)           { cx = hr.left() - gap - cw; cy = hr.top(); ok = true; }
+        if (!ok) { cx = (width() - cw) / 2; cy = (height() - ch) / 2; }
+
+        cx = std::clamp(cx, 12, std::max(12, width() - cw - 12));
+        cy = std::clamp(cy, 12, std::max(12, height() - ch - 12));
+        card_->move(cx, cy);
+        card_->raise(); card_->show();
+    }
+
+    void finish() { hide(); card_->hide(); }
+
+    QVector<Step> steps_;
+    int current_ = -1;
+    QTabWidget* tabWidget_ = nullptr;
+    QWidget* card_;
+    QLabel* titleLabel_;
+    QLabel* descLabel_;
+    QLabel* counterLabel_;
+    QPushButton* backBtn_;
+    QPushButton* nextBtn_;
+    QPushButton* skipBtn_;
 };
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
@@ -1085,6 +1293,31 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     updateElasticOutputDirState();
     updateElasticInputSummary();
     setRunningUi(false);
+
+    // Interactive tutorial overlay
+    {
+        tutorialOverlay_ = new TutorialOverlay(this);
+        tutorialOverlay_->setTabWidget(mainTabs_);
+
+        QVector<TutorialOverlay::Step> steps;
+        steps.append({mainTabs_->tabBar(), "Simulation Tab",
+            "Start here. Choose between Misfit or CVD model to run a PFC forward simulation.", 0});
+        steps.append({modelToggleRow, "Model Selection",
+            "Toggle between Misfit and CVD models. Each has its own parameter defaults and physics.", -1});
+        steps.append({modelParamStack_, "Parameter Sweep",
+            "Set each parameter to Fixed, Range, or List mode. All combinations run as a batch queue.", -1});
+        steps.append({expRunBtn_, "Run Simulation",
+            "Click Run to start the experiment. Progress shows in the bars below.", -1});
+        steps.append({mainTabs_->tabBar(), "Elastic Analysis",
+            "Optional: extract strain tensors and Q4/Q6 order parameters from simulation output.", 1});
+        steps.append({elasticInputDir_, "Input Directory",
+            "Point to a simulation output folder. Parameters auto-populate from run_config.txt.", -1});
+        steps.append({mainTabs_->tabBar(), "Visualizer",
+            "Browse and render result files from any simulation or analysis run.", 2});
+        steps.append({resultsFiles_, "Result Files",
+            "Select a .txt file to view as a data table or render as a heatmap with zoom, pan, and export.", -1});
+        tutorialOverlay_->setSteps(steps);
+    }
 
     // Show welcome dialog on first launch
     {
@@ -2620,6 +2853,10 @@ void MainWindow::setRunningUi(bool running) {
 void MainWindow::resizeEvent(QResizeEvent* event) {
     QMainWindow::resizeEvent(event);
     updateStatusLogText();
+    if (tutorialOverlay_ && tutorialOverlay_->isVisible()) {
+        tutorialOverlay_->resize(size());
+        tutorialOverlay_->raise();
+    }
 }
 
 void MainWindow::launchJob(const RunJob& job) {
@@ -3053,13 +3290,13 @@ void MainWindow::showAboutDialog() {
     layout->addWidget(scroll, 1);
 
     auto* bottomRow = new QHBoxLayout;
-    auto* welcomeBtn = new QPushButton("Show Welcome Guide");
-    welcomeBtn->setIcon(style()->standardIcon(QStyle::SP_DialogHelpButton));
-    connect(welcomeBtn, &QPushButton::clicked, this, [this, &dlg]() {
+    auto* tourBtn = new QPushButton("Interactive Tour");
+    tourBtn->setIcon(style()->standardIcon(QStyle::SP_DialogHelpButton));
+    connect(tourBtn, &QPushButton::clicked, this, [this, &dlg]() {
         dlg.accept();
-        showWelcomeDialog();
+        startTutorial();
     });
-    bottomRow->addWidget(welcomeBtn);
+    bottomRow->addWidget(tourBtn);
     bottomRow->addStretch(1);
     auto* okBtn = new QPushButton("OK");
     okBtn->setDefault(true);
@@ -3070,216 +3307,71 @@ void MainWindow::showAboutDialog() {
     dlg.exec();
 }
 
+void MainWindow::startTutorial() {
+    if (!tutorialOverlay_) return;
+    tutorialOverlay_->start();
+}
+
 void MainWindow::showWelcomeDialog() {
     QDialog dlg(this);
     dlg.setWindowTitle("Welcome to MID Nano");
     dlg.setModal(true);
-    dlg.setFixedSize(700, 580);
+    dlg.setFixedSize(420, 320);
 
-    auto* outerLayout = new QVBoxLayout(&dlg);
-    outerLayout->setSpacing(0);
-    outerLayout->setContentsMargins(0, 0, 0, 0);
+    auto* layout = new QVBoxLayout(&dlg);
+    layout->setContentsMargins(40, 32, 40, 24);
+    layout->setSpacing(10);
 
-    // ── Persistent header ──
-    auto* header = new QWidget;
-    header->setStyleSheet("background: #F8FAFC; border-bottom: 1px solid #E5E7EB;");
-    auto* headerLayout = new QVBoxLayout(header);
-    headerLayout->setContentsMargins(0, 20, 0, 16);
-    headerLayout->setSpacing(6);
+    auto* title = new QLabel(
+        "<div style='font-size:22pt; font-weight:700; color:#1E293B;'>MID Nano</div>");
+    title->setTextFormat(Qt::RichText);
+    title->setAlignment(Qt::AlignHCenter);
+    layout->addWidget(title);
 
-    auto* titleLabel = new QLabel("<span style='font-size:22pt; font-weight:700; color:#1E293B;'>MID Nano</span>");
-    titleLabel->setTextFormat(Qt::RichText);
-    titleLabel->setAlignment(Qt::AlignHCenter);
-    headerLayout->addWidget(titleLabel);
+    auto* subtitle = new QLabel(
+        "<div style='font-size:11pt; color:#6B7280;'>Phase-Field Crystal Experiment Suite</div>");
+    subtitle->setTextFormat(Qt::RichText);
+    subtitle->setAlignment(Qt::AlignHCenter);
+    layout->addWidget(subtitle);
 
-    auto* subtitleLabel = new QLabel("<span style='font-size:11pt; color:#6B7280;'>Phase-Field Crystal Experiment Suite</span>");
-    subtitleLabel->setTextFormat(Qt::RichText);
-    subtitleLabel->setAlignment(Qt::AlignHCenter);
-    headerLayout->addWidget(subtitleLabel);
+    auto* flow = new QLabel(
+        "<div style='font-size:10pt; color:#9CA3AF; margin-top:12px;'>"
+        "Simulation \u2192 Elastic Analysis \u2192 Visualizer</div>");
+    flow->setTextFormat(Qt::RichText);
+    flow->setAlignment(Qt::AlignHCenter);
+    layout->addWidget(flow);
 
-    // Step indicator dots
-    auto* stepRow = new QWidget;
-    auto* stepLayout = new QHBoxLayout(stepRow);
-    stepLayout->setContentsMargins(0, 8, 0, 0);
-    stepLayout->setSpacing(0);
-    stepLayout->addStretch(1);
+    layout->addStretch(1);
 
-    QVector<QLabel*> dots(4);
-    QStringList stepNames = {"Overview", "Simulation", "Elastic", "Visualizer"};
-    for (int i = 0; i < 4; ++i) {
-        dots[i] = new QLabel;
-        dots[i]->setAlignment(Qt::AlignCenter);
-        dots[i]->setFixedSize(18, 18);
-        stepLayout->addWidget(dots[i]);
-        if (i < 3) {
-            auto* connector = new QWidget;
-            connector->setFixedSize(28, 2);
-            connector->setStyleSheet("background: #D1D5DB;");
-            stepLayout->addWidget(connector, 0, Qt::AlignVCenter);
-        }
-    }
-    stepLayout->addStretch(1);
-    headerLayout->addWidget(stepRow);
+    auto* btnRow = new QHBoxLayout;
+    btnRow->setSpacing(12);
+    auto* tourBtn = new QPushButton("Take a Tour");
+    tourBtn->setProperty("primary", true);
+    tourBtn->setMinimumWidth(140);
+    tourBtn->setMinimumHeight(40);
+    auto* skipBtn = new QPushButton("Skip");
+    skipBtn->setMinimumHeight(40);
+    btnRow->addStretch(1);
+    btnRow->addWidget(tourBtn);
+    btnRow->addWidget(skipBtn);
+    btnRow->addStretch(1);
+    layout->addLayout(btnRow);
 
-    outerLayout->addWidget(header);
+    auto* dontShow = new QCheckBox("Don\u2019t show on startup");
+    dontShow->setStyleSheet("color: #9CA3AF; font-size: 10pt;");
+    layout->addWidget(dontShow, 0, Qt::AlignHCenter);
 
-    // ── Page content ──
-    auto* stack = new QStackedWidget;
+    connect(tourBtn, &QPushButton::clicked, &dlg, [&dlg]() { dlg.done(1); });
+    connect(skipBtn, &QPushButton::clicked, &dlg, [&dlg]() { dlg.done(0); });
 
-    auto updateDots = [&dots](int current) {
-        for (int i = 0; i < 4; ++i) {
-            if (i == current) {
-                dots[i]->setText(QString::fromUtf8("●"));
-                dots[i]->setStyleSheet("color: #2563EB; font-size: 16pt;");
-            } else if (i < current) {
-                dots[i]->setText(QString::fromUtf8("●"));
-                dots[i]->setStyleSheet("color: #93C5FD; font-size: 16pt;");
-            } else {
-                dots[i]->setText(QString::fromUtf8("○"));
-                dots[i]->setStyleSheet("color: #CBD5E1; font-size: 16pt;");
-            }
-        }
-    };
-
-    auto makePage = [](const QString& pageTitle, const QString& bodyHtml) -> QWidget* {
-        auto* page = new QWidget;
-        auto* pl = new QVBoxLayout(page);
-        pl->setContentsMargins(36, 20, 36, 8);
-        pl->setSpacing(8);
-
-        auto* pt = new QLabel(QString("<span style='font-size:15pt; font-weight:600; color:#1E293B;'>%1</span>").arg(pageTitle));
-        pt->setTextFormat(Qt::RichText);
-        pt->setAlignment(Qt::AlignLeft);
-        pl->addWidget(pt);
-
-        auto* body = new QLabel(bodyHtml);
-        body->setTextFormat(Qt::RichText);
-        body->setWordWrap(true);
-        body->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-        pl->addWidget(body, 1);
-
-        return page;
-    };
-
-    const QString card = "background:#F8FAFC; border:1px solid #E5E7EB; border-left:3px solid %1; "
-                         "border-radius:0px; padding:12px 16px; margin-bottom:8px;";
-    const QString stl = "font-size:11pt; line-height:1.6;";
-
-    // Page 0: Overview
-    stack->addWidget(makePage("Workflow Overview",
-        QString("<div style='%1'>"
-        "<div style='%2'>Simulation (Misfit / CVD) produces field data and VTI checkpoints.</div>"
-        "<div style='text-align:center; font-size:14pt; color:#2563EB; padding:2px;'>&darr;</div>"
-        "<div style='%3'>Elastic Analysis reads VTI checkpoints and extracts strain, Q4/Q6 data. <i>Optional.</i></div>"
-        "<div style='text-align:center; font-size:14pt; color:#2563EB; padding:2px;'>&darr;</div>"
-        "<div style='%4'>Visualizer renders any result .txt file as a heatmap or data table.</div>"
-        "<div style='margin-top:12px; color:#6B7280; font-size:10pt;'>"
-        "Misfit &rarr; Phimax, energy, VTI &nbsp;|&nbsp; CVD &rarr; Phimax, energy, VTI &nbsp;|&nbsp; "
-        "Elastic &rarr; strain, q4q6, Phimax</div>"
-        "</div>")
-        .arg(stl)
-        .arg(card.arg("#2563EB"))
-        .arg(card.arg("#8B5CF6"))
-        .arg(card.arg("#059669"))
-    ));
-
-    // Page 1: Simulation
-    stack->addWidget(makePage("Simulation",
-        QString("<div style='%1'>"
-        "<div style='%2'><b>Model Selection</b><br/>"
-        "Toggle between Misfit (misfit-strain crystallization) and CVD (controlled vapor deposition). "
-        "Each model has independent parameter defaults.</div>"
-        "<div style='%2'><b>Parameter Sweep</b><br/>"
-        "Set each parameter to Fixed, Range (start/end/step), or List (comma-separated). "
-        "All combinations run as a batch queue.</div>"
-        "<div style='%2'><b>Output</b><br/>"
-        "Results go to a timestamped folder. Both models produce energy.txt, Phimax_*.txt, "
-        "and phi/con VTI checkpoints for downstream analysis.</div>"
-        "</div>")
-        .arg(stl, card.arg("#2563EB"))
-    ));
-
-    // Page 2: Elastic Analysis
-    stack->addWidget(makePage("Elastic Analysis",
-        QString("<div style='%1'>"
-        "<div style='%2'><b>When to Use</b><br/>"
-        "Use when you need strain tensors or crystallographic order (Q4/Q6) that the forward "
-        "simulation does not compute. Skip this step if you only need energy or Phimax data.</div>"
-        "<div style='%2'><b>Input</b><br/>"
-        "Point to a Simulation output folder. The app detects paired phi/con VTI files and "
-        "auto-populates parameters from run_config.txt.</div>"
-        "<div style='%2'><b>Output</b><br/>"
-        "Produces strain_*.txt (per-atom strain), q4q6_*.txt (crystallographic order), "
-        "and Phimax_*.txt (atom positions). All viewable in the Visualizer.</div>"
-        "</div>")
-        .arg(stl, card.arg("#8B5CF6"))
-    ));
-
-    // Page 3: Visualizer
-    stack->addWidget(makePage("Visualizer",
-        QString("<div style='%1'>"
-        "<div style='%2'><b>File Browser</b><br/>"
-        "Opens the latest output directory automatically. Lists all .txt result files.</div>"
-        "<div style='%2'><b>Table View</b><br/>"
-        "Any .txt file rendered as a formatted data table with auto-detected column headers.</div>"
-        "<div style='%2'><b>Heatmap View</b><br/>"
-        "Available for Phimax_*.txt, strain_*.txt, q4q6_*.txt. Gaussian-kernel interpolated "
-        "color map with zoom, pan, and PNG export.</div>"
-        "</div>")
-        .arg(stl, card.arg("#059669"))
-    ));
-
-    outerLayout->addWidget(stack, 1);
-
-    // ── Navigation bar ──
-    auto* navBar = new QWidget;
-    navBar->setStyleSheet("background: #F8FAFC; border-top: 1px solid #E5E7EB;");
-    auto* navLayout = new QHBoxLayout(navBar);
-    navLayout->setContentsMargins(24, 12, 24, 16);
-
-    auto* dontShow = new QCheckBox("Don't show on startup");
-    auto* backBtn = new QPushButton("Back");
-    auto* nextBtn = new QPushButton("Next");
-    nextBtn->setProperty("primary", true);
-    nextBtn->setMinimumWidth(120);
-
-    navLayout->addWidget(dontShow);
-    navLayout->addStretch(1);
-    navLayout->addWidget(backBtn);
-    navLayout->addWidget(nextBtn);
-
-    outerLayout->addWidget(navBar);
-
-    // ── Navigation logic ──
-    auto updateNav = [&]() {
-        const int idx = stack->currentIndex();
-        const int total = stack->count();
-        backBtn->setEnabled(idx > 0);
-        nextBtn->setText(idx == total - 1 ? "Get Started" : "Next");
-        updateDots(idx);
-    };
-
-    connect(backBtn, &QPushButton::clicked, &dlg, [&]() {
-        if (stack->currentIndex() > 0) {
-            stack->setCurrentIndex(stack->currentIndex() - 1);
-            updateNav();
-        }
-    });
-    connect(nextBtn, &QPushButton::clicked, &dlg, [&]() {
-        if (stack->currentIndex() < stack->count() - 1) {
-            stack->setCurrentIndex(stack->currentIndex() + 1);
-            updateNav();
-        } else {
-            dlg.accept();
-        }
-    });
-
-    updateNav();
-    dlg.exec();
+    int result = dlg.exec();
 
     if (dontShow->isChecked()) {
         QSettings settings;
         settings.setValue("welcome/shown", true);
+    }
+    if (result == 1) {
+        startTutorial();
     }
 }
 

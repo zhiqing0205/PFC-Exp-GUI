@@ -79,6 +79,7 @@ private slots:
     void showAboutDialog();
     void showWelcomeDialog();
     void uploadLicense();
+    void startTutorial();
 
     void onProcessReadyRead();
     void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
@@ -220,4 +221,7 @@ private:
     QVector<float> resultsImageSum_;
     QVector<float> resultsImageWsum_;
     QVector<float> resultsImageWmax_;
+
+    class TutorialOverlay;
+    TutorialOverlay* tutorialOverlay_ = nullptr;
 };
