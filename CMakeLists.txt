@@ -6,6 +6,31 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# ── Release hardening ────────────────────────────────────────────────
+# LTO: merges translation units, inlines aggressively, removes dead code
+include(CheckIPOSupported)
+check_ipo_supported(RESULT _ipo_supported OUTPUT _ipo_error)
+if(_ipo_supported)
+  set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+else()
+  message(WARNING "LTO not supported: ${_ipo_error}")
+endif()
+
+# Hide internal symbols (GCC/Clang executables)
+if(NOT MSVC)
+  set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+  set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
+endif()
+
+# Strip symbols at link time in Release builds
+if(NOT MSVC)
+  if(APPLE)
+    add_link_options("$<$<CONFIG:Release>:-Wl,-x>")
+  else()
+    add_link_options("$<$<CONFIG:Release>:-Wl,--strip-all>")
+  endif()
+endif()
+
 set(MID_NANO_VERSION "${PROJECT_VERSION}" CACHE STRING "Version string shown in the MID Nano About dialog")
 
 set(PFC_GRID_L "256" CACHE STRING "Grid size L (compile-time)")

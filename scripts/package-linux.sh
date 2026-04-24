@@ -66,6 +66,11 @@ if [[ ! -f "${BIN_CLI}" ]]; then
   exit 1
 fi
 
+# Strip debug symbols (defense-in-depth; CI also strips before this script)
+if command -v strip >/dev/null 2>&1; then
+  strip --strip-all "${BIN_GUI}" "${BIN_CLI}" 2>/dev/null || true
+fi
+
 DEB_VERSION="${VERSION#v}"
 
 tmp="$(mktemp -d)"

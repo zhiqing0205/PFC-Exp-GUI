@@ -219,6 +219,11 @@ jobs:
         shell: bash
         run: cmake --build build
 
+      - name: Strip binaries (Linux)
+        if: runner.os == 'Linux' && !matrix.docker_platform
+        shell: bash
+        run: strip --strip-all "build/bin/MID Nano" "build/bin/pfc-exp-cli"
+
       - name: Setup QEMU (Linux arm64)
         if: runner.os == 'Linux' && matrix.docker_platform
         uses: docker/setup-qemu-action@v3
@@ -259,6 +264,7 @@ jobs:
                 -DMID_NANO_VERSION="${GITHUB_REF_NAME}"
 
               cmake --build build
+              strip --strip-all build/bin/"MID Nano" build/bin/pfc-exp-cli
 
               cd /work
               chmod +x scripts/package-linux.sh
@@ -309,6 +315,10 @@ jobs:
           Copy-Item "build/bin/MID Nano.exe" "stage/app/" -Force
           Copy-Item "build/bin/pfc-exp-cli.exe" "stage/app/" -Force
           Copy-Item "build/bin/mid-nano-launcher.exe" "stage/MID Nano.exe" -Force
+
+          # Remove debug symbols (PDB files) from staging and build
+          Get-ChildItem -Path "stage" -Recurse -Filter "*.pdb" | Remove-Item -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -Path "build" -Recurse -Filter "*.pdb" | Remove-Item -Force -ErrorAction SilentlyContinue
 
           if ("${{ matrix.id }}" -eq "win-arm64") {
             Write-Host "win-arm64: skipping windeployqt (arm64 Qt tools cannot run on x64 runner). Using manual Qt deployment."
@@ -495,6 +505,10 @@ jobs:
             echo "=== otool -L (FFTW) ==="
             otool -L "${FRAMEWORKS_DIR}/${fftw_base}" || true
           fi
+
+          # Strip symbols from executables before signing
+          strip -x "${APP}/Contents/MacOS/MID Nano"
+          strip -x "${CLI_IN_APP}"
 
           # Ad-hoc sign the bundle so macOS won't kill the helper due to invalid/inconsistent signatures.
           codesign --force --deep --sign - "${APP}"
